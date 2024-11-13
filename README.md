@@ -1,5 +1,3 @@
-# Writing the README content to a text file
-readme_content = """
 # Auto Driving Simulation Project
 
 ## Project Overview
