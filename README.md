@@ -60,7 +60,7 @@ pip install numpy matplotlib pandas scipy numba
 1. Place `latitude_distance_to_latitude.csv`, `longitude_distance_to_longitude.csv`, and `Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv` in the same directory as the script.
 2. Run the script:
     ```bash
-    python auto_driving_simulation.py
+    python auto_driving_final_project_controller.py
     ```
 3. **Animation Mode:** If `show_animation` is set to `True`, a live plot of the vehicle’s path tracking and speed profile will be displayed.
 
