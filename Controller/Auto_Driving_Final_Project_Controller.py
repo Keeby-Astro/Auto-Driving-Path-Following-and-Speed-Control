@@ -51,7 +51,7 @@ Kd = 0.5  # PID control gain: D
 # Constants
 dt = 0.1  # Time step
 L = 2.7   # Wheel base of 2014 Nissan Leaf
-max_steer = np.radians(30.0)
+max_steer = np.radians(31.30412)
 output_limit = 3.8873 # Acceleration limit of 2014 Nissan Leaf
 
 # Set to True to show the animation
@@ -334,6 +334,14 @@ def main():
         ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral)
         prev_error, integral = new_error, new_integral
         di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
+        
+        # Adjust target speed based on the turning angle
+        angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
+        if angle_diff > np.radians(10):  # Slow down if the turning angle is greater than 10 degrees
+            target_speed = max(TARGET_SPEED_MPS * 0.5, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
+        else:
+            target_speed = TARGET_SPEED_MPS
+        
         state.update(ai, di)
         time += dt
         i += 1
