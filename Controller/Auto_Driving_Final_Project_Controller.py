@@ -1,5 +1,4 @@
 # Auto Driving Final Project
-# Names: Caden Matthews, Jacob Ferrell, James Ouellette, Lin Tan, and David Yun
 
 '''
 --Problem Statement:
@@ -17,7 +16,7 @@ Latitude - deg
 1'' of Latitude (Miles), 1'' of Latitude (Feet), 1'' of Latitude (Metres)
 
 --Longitude Column Names:
-Latitude - deg
+Longitude - deg
 1deg of Longitude (Miles), 1deg of Longitude (Feet), 1deg of Longitude (Metres)
 1' of Longitude (Miles), 1' of Longitude (Feet), 1' of Longitude (Metres)
 1'' of Longitude (Miles), 1'' of Longitude (Feet), 1'' of Longitude (Metres)
@@ -26,9 +25,11 @@ Latitude - deg
 Time, Longitude, Latitude, Speed[mps], Brake_status
 
 --TODO:
-1. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
+1. Make sure that the GPS data is being imported, processed, and followed correctly by the vehicle by the timestamps
+    given in the test data.
+2. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
    tire slip, and other real-world factors.
-2. Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as
+3. Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as
    path planning or sensor data processing.
 '''
 
@@ -181,14 +182,14 @@ def main():
     F = np.eye(4)        # State transition matrix
     H = np.eye(4)        # Observation matrix
     Q = np.eye(4) * 0.1  # Process noise covariance
-    R = np.eye(4) * 1.0  # Measurement noise covariance
+    R = np.eye(4) * 0.8  # Measurement noise covariance
     x_est = np.zeros(4)  # Initial state estimate
     P_est = np.eye(4)    # Initial estimate covariance
 
     # Apply Kalman Filter to the data
     filtered_data = []
     for i in range(len(test_data_final)):
-        z = np.array([test_data_final['Local_X'].iloc[i], test_data_final['Local_Y'].iloc[i], 0, 0])  # Measurement
+        z = np.array([test_data_final['Local_X'].iloc[i], test_data_final['Local_Y'].iloc[i], 0, 0])
         x_est, P_est = kalman_filter(z, x_est, P_est, F, H, Q, R)
         filtered_data.append(x_est[:2])
 
@@ -200,8 +201,10 @@ def main():
     plt.figure(figsize=(8, 8))
     size = 100
     plt.plot(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='r')
-    plt.scatter(test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0], marker='*', color='g', s=size, label='Start')
-    plt.scatter(test_data_final['Local_X'].iloc[-1], test_data_final['Local_Y'].iloc[-1], marker='<', color='k', s=size, label='End')
+    plt.scatter(test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0], marker='*',
+                 color='g', s=size, label='Start')
+    plt.scatter(test_data_final['Local_X'].iloc[-1], test_data_final['Local_Y'].iloc[-1], marker='<',
+                 color='k', s=size, label='End')
     plt.xlabel('Local X (m)')
     plt.ylabel('Local Y (m)')
     plt.title('Local X and Y Trajectory')
@@ -215,7 +218,7 @@ def main():
 
     # Path Tracking
     target_speed = TARGET_SPEED_MPS
-    max_simulation_time = 100.0
+    max_simulation_time = test_data_final['Time'].iloc[-1] - test_data_final['Time'].iloc[0]
     initial_x, initial_y = test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0]
     dx_init, dy_init = test_data_final['Local_X'].iloc[1] - initial_x, test_data_final['Local_Y'].iloc[1] - initial_y
     initial_yaw = np.arctan2(dy_init, dx_init) + np.pi
@@ -251,7 +254,7 @@ def main():
         plt.pause(0.1)
 
     i = 0
-    while max_simulation_time >= time and last_idx > target_idx:
+    while last_idx > target_idx:
         ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral)
         prev_error, integral = new_error, new_integral
         di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
@@ -260,7 +263,8 @@ def main():
         i += 1
 
         if i >= len(x_history):
-            x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: np.append(arr, np.zeros(100)), [x_history, y_history, yaw_history, v_history, t_history])
+            x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: np.append(arr, np.zeros(100)),
+                                                                           [x_history, y_history, yaw_history, v_history, t_history])
 
         x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
 
@@ -271,19 +275,21 @@ def main():
             plt.pause(0.001)
 
     # Truncate the arrays
-    x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: arr[:i+1], [x_history, y_history, yaw_history, v_history, t_history])
+    x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: arr[:i+1],
+                                                                   [x_history, y_history, yaw_history, v_history, t_history])
 
     # Print the simulation results
-    print("Goal reached!" if last_idx >= target_idx else "Goal not reached within the simulation time.")
+    print("Goal reached!" if last_idx <= target_idx else "Goal not reached within the simulation time.")
 
     if show_animation:
         plt.figure(figsize=(10, 5))
 
         plt.subplot(1, 2, 1)
-        plt.plot(cx, cy, ".r", label="Course")
-        plt.plot(x_history, y_history, "-b", label="Trajectory")
         plt.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
         plt.scatter(cx[-1], cy[-1], marker='<', color='k', s=size, label='End')
+        plt.plot(cx, cy, ".r", label="Course")
+        
+        plt.plot(x_history, y_history, "-b", label="Trajectory")
         plt.xlabel("X [m]")
         plt.ylabel("Y [m]")
         plt.title("Path Tracking")
@@ -299,4 +305,4 @@ def main():
         plt.show()
 
 if __name__ == '__main__':
-    main()
+     main()
