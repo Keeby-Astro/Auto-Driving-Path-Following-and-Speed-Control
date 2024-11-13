@@ -53,3 +53,29 @@ To run this project, the following Python libraries are required:
 Install these packages using:
 ```bash
 pip install numpy matplotlib pandas scipy numba
+```
+
+## Running the Simulation
+
+1. Place `latitude_distance_to_latitude.csv`, `longitude_distance_to_longitude.csv`, and `Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv` in the same directory as the script.
+2. Run the script:
+    ```bash
+    python auto_driving_simulation.py
+    ```
+3. **Animation Mode:** If `show_animation` is set to `True`, a live plot of the vehicle’s path tracking and speed profile will be displayed.
+
+### Output Visualization
+- **Path Tracking Plot:** Displays the GPS path with start and end markers, and the vehicle's trajectory as it follows the path.
+- **Speed Profile Plot:** Plots the speed of the vehicle over time, showing its adherence to the target speed.
+
+## Future Improvements
+
+### 1. Enhanced Vehicle Dynamics
+Consider using a more complex vehicle dynamics model to better simulate tire slip, road conditions, and other real-world factors.
+
+### 2. Parallel Processing
+Implement multithreading or multiprocessing for handling intensive tasks, such as real-time path planning and data filtering.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for more details.
