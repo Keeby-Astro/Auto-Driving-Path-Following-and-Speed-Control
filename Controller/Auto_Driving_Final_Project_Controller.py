@@ -25,11 +25,9 @@ Longitude - deg
 Time, Longitude, Latitude, Speed[mps], Brake_status
 
 --TODO:
-1. Make sure that the GPS data is being imported, processed, and followed correctly by the vehicle by the timestamps
-    given in the test data.
-2. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
+1. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
    tire slip, and other real-world factors.
-3. Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as
+2. Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as
    path planning or sensor data processing.
 '''
 
@@ -38,26 +36,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.interpolate import interp1d
-from scipy.constants import mile
+from scipy.constants import mile, kilo, hour
 from numba import njit, float64
 from numba.experimental import jitclass
 import cubic_spline_planner
 
+# Gain Parameters
 k = 0.5   # Stanley control gain
 Kp = 1.0  # PID control gain: P
 Ki = 0.01 # PID control gain: I
 Kd = 0.1  # PID control gain: D
+
+# Constants
 dt = 0.1  # Time step
 L = 2.7   # Wheel base of 2014 Nissan Leaf
 max_steer = np.radians(30.0)
-output_limit = 1.0
+output_limit = 3.8873 # Acceleration limit of 2014 Nissan Leaf
 
 # Set to True to show the animation
 show_animation = True
 
 # Target speed in mph to m/s
 TARGET_SPEED_MPH = 5.0
-TARGET_SPEED_MPS = TARGET_SPEED_MPH * mile / 3600
+TARGET_SPEED_MPS = TARGET_SPEED_MPH * mile / hour
 
 # Define the state specification
 state_spec = [
@@ -297,7 +298,7 @@ def main():
         plt.legend()
 
         plt.subplot(1, 2, 2)
-        plt.plot(t_history, v_history * 3.6, "-r")
+        plt.plot(t_history, v_history * kilo / hour, "-r")
         plt.xlabel("Time [s]")
         plt.ylabel("Speed [km/h]")
         plt.title("Speed Profile")
