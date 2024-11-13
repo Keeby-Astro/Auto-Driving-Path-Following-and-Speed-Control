@@ -27,8 +27,9 @@ Time, Longitude, Latitude, Speed[mps], Brake_status
 --TODO:
 1. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
    tire slip, and other real-world factors.
-2. Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as
-   path planning or sensor data processing.
+
+Extra:
+Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as path planning or sensor data processing.
 '''
 
 # Importing Required Libraries
@@ -44,8 +45,8 @@ import cubic_spline_planner
 # Gain Parameters
 k = 0.5   # Stanley control gain
 Kp = 1.0  # PID control gain: P
-Ki = 0.01 # PID control gain: I
-Kd = 0.1  # PID control gain: D
+Ki = 0.02 # PID control gain: I
+Kd = 0.5  # PID control gain: D
 
 # Constants
 dt = 0.1  # Time step
@@ -71,6 +72,16 @@ state_spec = [
 # Define the state class for the vehicle
 @jitclass(state_spec)
 class State:
+    '''
+    Class representing the state of a vehicle.
+
+    :param x: (float) x-coordinate
+    :param y: (float) y-coordinate
+    :param yaw: (float) yaw angle
+    :param v: (float) speed
+
+    :return: (State) State of the vehicle
+    '''
     # Initialize the state of the vehicle
     def __init__(self, x, y, yaw, v):
         self.x = x
@@ -80,16 +91,30 @@ class State:
 
     # Update the state of the vehicle
     def update(self, acceleration, delta):
+        # Limit the steering angle to the maximum steering angle
         delta = min(max(delta, -max_steer), max_steer)
+        # Update the vehicle's position
         self.x += self.v * np.cos(self.yaw) * dt
         self.y += self.v * np.sin(self.yaw) * dt
+        # Update the vehicle's yaw angle
         self.yaw += self.v / L * np.tan(delta) * dt
         self.yaw = normalize_angle(self.yaw)
+        # Update the vehicle's velocity
         self.v += acceleration * dt
 
 # PID controller with Anti-Windup
 @njit(cache=True)
 def pid_control(target, current, prev_error=0.0, integral=0.0):
+    '''
+    PID controller with Anti-Windup
+    
+    :param target: (float) Target value
+    :param current: (float) Current value
+    :param prev_error: (float) Previous error
+    :param integral: (float) Integral term
+    
+    :return: (float) Output value, Error, Integral term
+    '''
     # PID control gains
     error = target - current
     p_term = Kp * error
@@ -111,10 +136,27 @@ def pid_control(target, current, prev_error=0.0, integral=0.0):
 # Function to normalize the angle
 @njit(cache=True)
 def normalize_angle(angle):
+    '''
+    Normalize the angle to the range [-pi, pi]
+
+    :param angle: (float) Angle in radians
+
+    :return: (float) Normalized angle
+    '''
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
 # Function to calculate the target index
 def calc_target_index(state, cx, cy, last_target_idx):
+    '''
+    Calculate the target index for the vehicle to follow the path.
+
+    :param state: (State) State of the vehicle
+    :param cx: ([float]) x-coordinates of the path
+    :param cy: ([float]) y-coordinates of the path
+    :param last_target_idx: (int) Last target index
+
+    :return: (int, float) Target index, Error at the front axle
+    '''
     fx, fy = state.x + L * np.cos(state.yaw), state.y + L * np.sin(state.yaw)
     dx, dy = cx[last_target_idx:] - fx, cy[last_target_idx:] - fy
     d = np.hypot(dx, dy)
@@ -132,6 +174,17 @@ def calc_target_index(state, cx, cy, last_target_idx):
 
 # Stanley control function
 def stanley_control(state, cx, cy, cyaw, last_target_idx):
+    '''
+    Stanley steering control.
+    
+    :param state: (State object)
+    :param cx: ([float])
+    :param cy: ([float])
+    :param cyaw: ([float])
+    :param last_target_idx: (int)
+    
+    :return: (float, int)
+    '''
     current_target_idx, error_front_axle = calc_target_index(state, cx, cy, last_target_idx)
     current_target_idx = max(last_target_idx, current_target_idx)
     theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw)
@@ -142,6 +195,15 @@ def stanley_control(state, cx, cy, cyaw, last_target_idx):
 
 # Function to convert latitude and longitude to local x and y
 def convert_to_local_x_y(test_data, lat_table, lon_table):
+    '''
+    Convert latitude and longitude to local x and y coordinates.
+    
+    :param test_data: (pd.DataFrame) Test data
+    :param lat_table: (pd.DataFrame) Latitude distance to latitude table
+    :param lon_table: (pd.DataFrame) Longitude distance to longitude table
+    
+    :return: (np.array, np.array) Local x and y coordinates
+    '''
     lat_interp = interp1d(lat_table['Latitude - deg'], lat_table['1deg of Latitude (Metres)'], fill_value="extrapolate")
     latitude_meters_per_degree = lat_interp(test_data['Latitude'].values)
     latitude_meters = (test_data['Latitude'].values - test_data['Latitude'].values[0]) * latitude_meters_per_degree
@@ -166,6 +228,19 @@ def main():
 
     # Kalman Filter for GPS data
     def kalman_filter(z, x_est, P_est, F, H, Q, R):
+        '''
+        Kalman Filter for GPS data.
+        
+        :param z: (np.array) Measurement
+        :param x_est: (np.array) State estimate
+        :param P_est: (np.array) Estimate covariance
+        :param F: (np.array) State transition matrix
+        :param H: (np.array) Observation matrix
+        :param Q: (np.array) Process noise covariance
+        :param R: (np.array) Measurement noise covariance
+        
+        :return: (np.array, np.array) Updated state estimate, Updated estimate covariance
+        '''
         # Prediction
         x_pred = F @ x_est
         P_pred = F @ P_est @ F.T + Q
