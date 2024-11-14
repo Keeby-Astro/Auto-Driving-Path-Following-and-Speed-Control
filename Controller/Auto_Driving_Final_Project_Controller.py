@@ -28,8 +28,6 @@ Time, Longitude, Latitude, Speed[mps], Brake_status
 1. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
    tire slip, and other real-world factors.
 
-2. Make sure you actually interpolated the GPS data to get the path. The path should be a smooth curve that the vehicle follows.
-
 Extra:
 Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as path planning or sensor data processing.
 '''
@@ -45,15 +43,15 @@ from numba.experimental import jitclass
 import cubic_spline_planner
 
 # Gain Parameters
-k = 0.5   # Stanley control gain
-Kp = 1.0  # PID control gain: P
-Ki = 0.02 # PID control gain: I
-Kd = 0.4  # PID control gain: D
+k = 0.01   # Stanley control gain
+Kp = 0.95  # PID control gain: P
+Ki = 0.06 # PID control gain: I
+Kd = 0.3  # PID control gain: D
 
 # Constants
 dt = 0.1  # Time step
 L = 2.7   # Wheel base of 2014 Nissan Leaf
-max_steer = np.radians(31.30412)
+max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf
 output_limit = 3.8873 # Acceleration limit of 2014 Nissan Leaf
 
 # Set to True to show the animation
@@ -103,6 +101,9 @@ class State:
         self.yaw = normalize_angle(self.yaw)
         # Update the vehicle's velocity
         self.v += acceleration * dt
+
+        # Prevent velocity from becoming negative
+        self.v = max(self.v, 0.0)
 
 # PID controller with Anti-Windup
 @njit(cache=True)
@@ -221,12 +222,10 @@ def main():
     latitude_distance_to_latitude = pd.read_csv('latitude_distance_to_latitude.csv')
     longitude_distance_to_longitude = pd.read_csv('longitude_distance_to_longitude.csv')
     test_data_final = pd.read_csv('Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv')
-
     test_data_final['Local_X'], test_data_final['Local_Y'] = convert_to_local_x_y(
-        test_data_final, latitude_distance_to_latitude, longitude_distance_to_longitude)
-    test_data_final['Local_X'] -= test_data_final['Local_X'].iloc[0]
-    test_data_final['Local_Y'] -= test_data_final['Local_Y'].iloc[0]
-    test_data_final = test_data_final.drop_duplicates(subset=['Local_X', 'Local_Y']).reset_index(drop=True)
+        test_data_final, latitude_distance_to_latitude, longitude_distance_to_longitude
+    )
+    test_data_final = test_data_final.iloc[15:]
 
     # Kalman Filter for GPS data
     def kalman_filter(z, x_est, P_est, F, H, Q, R):
@@ -279,6 +278,7 @@ def main():
     plt.figure(figsize=(8, 8))
     size = 100
     plt.plot(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='r')
+    plt.plot(test_data_final['Filtered_X'], test_data_final['Filtered_Y'], label='Filtered Trajectory', color='b')
     plt.scatter(test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0], marker='*',
                  color='g', s=size, label='Start')
     plt.scatter(test_data_final['Local_X'].iloc[-1], test_data_final['Local_Y'].iloc[-1], marker='<',
@@ -292,15 +292,20 @@ def main():
 
     # Cubic Spline Path Planning
     cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
-        test_data_final['Local_X'].tolist(), test_data_final['Local_Y'].tolist(), ds=0.1)
+        test_data_final['Filtered_X'].tolist(), test_data_final['Filtered_Y'].tolist(), ds=0.1)
 
     # Path Tracking
     target_speed = TARGET_SPEED_MPS
     max_simulation_time = test_data_final['Time'].iloc[-1] - test_data_final['Time'].iloc[0]
-    initial_x, initial_y = test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0]
-    dx_init, dy_init = test_data_final['Local_X'].iloc[1] - initial_x, test_data_final['Local_Y'].iloc[1] - initial_y
-    initial_yaw = np.arctan2(dy_init, dx_init) + np.pi
+
+    # Initial state based on the first data row
+    initial_x, initial_y = test_data_final['Filtered_X'].iloc[0], test_data_final['Filtered_Y'].iloc[0]
+    dx_init, dy_init = test_data_final['Filtered_X'].iloc[1] - initial_x, test_data_final['Filtered_Y'].iloc[1] - initial_y
+    initial_yaw = np.arctan2(dy_init, dx_init)
+    initial_yaw = cyaw[0]
     state = State(float(initial_x), float(initial_y), float(initial_yaw), 0.0)
+
+    # Set cx, cy, cyaw, and ck as arrays generated from cubic spline planner
     cx, cy, cyaw, ck = map(np.array, [cx, cy, cyaw, ck])
 
     # Simulation
@@ -309,15 +314,15 @@ def main():
     x_history, y_history, yaw_history, v_history, t_history = [np.zeros(n_steps) for _ in range(5)]
     x_history[0], y_history[0], yaw_history[0], v_history[0], t_history[0] = state.x, state.y, state.yaw, state.v, time
 
-    # Initial target index
-    target_idx, _ = calc_target_index(state, cx, cy, 0)
+    # Ensure target_idx starts from the beginning
+    target_idx = 0
     prev_error, integral = 0.0, 0.0
 
     # Simulation loop
     if show_animation:
         # Initial setting for visualization
         plt.figure(figsize=(8, 8))
-        line_course, = plt.plot(cx, cy, ".r", label="Course")
+        line_course, = plt.plot(cx, cy, "r", label="Course")
         line_trajectory, = plt.plot([], [], "-b", label="Trajectory")
         point_target, = plt.plot([], [], "xg", label="Target")
         plt.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
@@ -331,8 +336,9 @@ def main():
         plt.show(block=False)
         plt.pause(0.1)
 
+    # Simulation loop with end condition for a single complete path loop
     i = 0
-    while last_idx > target_idx:
+    while target_idx < len(cx) - 1:
         ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral)
         prev_error, integral = new_error, new_integral
         di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
@@ -343,15 +349,17 @@ def main():
             target_speed = max(TARGET_SPEED_MPS * 0.45, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
         else:
             target_speed = TARGET_SPEED_MPS
-        
+
         state.update(ai, di)
         time += dt
         i += 1
 
+        # Extend history arrays if needed
         if i >= len(x_history):
             x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: np.append(arr, np.zeros(100)),
-                                                                           [x_history, y_history, yaw_history, v_history, t_history])
+                                                                        [x_history, y_history, yaw_history, v_history, t_history])
 
+        # Store the state in the history
         x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
 
         if show_animation:
@@ -362,10 +370,10 @@ def main():
 
     # Truncate the arrays
     x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: arr[:i+1],
-                                                                   [x_history, y_history, yaw_history, v_history, t_history])
+                                                                [x_history, y_history, yaw_history, v_history, t_history])
 
     # Print the simulation results
-    print("Goal reached!" if last_idx <= target_idx else "Goal not reached within the simulation time.")
+    print("Goal reached!" if target_idx >= len(cx) - 1 else "Goal not reached within the simulation time.")
 
     if show_animation:
         plt.figure(figsize=(10, 5))
@@ -373,7 +381,7 @@ def main():
         plt.subplot(1, 2, 1)
         plt.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
         plt.scatter(cx[-1], cy[-1], marker='<', color='k', s=size, label='End')
-        plt.plot(cx, cy, ".r", label="Course")
+        plt.plot(cx, cy, "r", label="Course")
         
         plt.plot(x_history, y_history, "-b", label="Trajectory")
         plt.xlabel("X [m]")
