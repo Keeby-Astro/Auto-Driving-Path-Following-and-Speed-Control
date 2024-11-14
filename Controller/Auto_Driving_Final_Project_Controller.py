@@ -28,6 +28,8 @@ Time, Longitude, Latitude, Speed[mps], Brake_status
 1. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
    tire slip, and other real-world factors.
 
+2. Make sure you actually interpolated the GPS data to get the path. The path should be a smooth curve that the vehicle follows.
+
 Extra:
 Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as path planning or sensor data processing.
 '''
@@ -46,7 +48,7 @@ import cubic_spline_planner
 k = 0.5   # Stanley control gain
 Kp = 1.0  # PID control gain: P
 Ki = 0.02 # PID control gain: I
-Kd = 0.5  # PID control gain: D
+Kd = 0.4  # PID control gain: D
 
 # Constants
 dt = 0.1  # Time step
@@ -337,8 +339,8 @@ def main():
         
         # Adjust target speed based on the turning angle
         angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
-        if angle_diff > np.radians(10):  # Slow down if the turning angle is greater than 10 degrees
-            target_speed = max(TARGET_SPEED_MPS * 0.5, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
+        if angle_diff > np.radians(5):  # Slow down if the turning angle is greater than 10 degrees
+            target_speed = max(TARGET_SPEED_MPS * 0.45, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
         else:
             target_speed = TARGET_SPEED_MPS
         
