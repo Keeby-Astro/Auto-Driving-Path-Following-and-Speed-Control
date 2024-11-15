@@ -54,6 +54,15 @@ L = 2.7   # Wheelbase of 2014 Nissan Leaf
 max_steer = np.radians(31.30412)  # Maximum steering angle of 2014 Nissan Leaf
 output_limit = 3.8873  # Acceleration limit of 2014 Nissan Leaf
 
+# Real World factors(for 2014 Nissan Leaf)
+battery = 24 #kwh
+drag_coeff = 0.28
+frictionCoeff = 0.015
+vehicle_mass = 1477 #kg
+gravity = 9.8
+frontal_area = 2.14
+air_density = 1.293
+
 # Set to True to show the animation
 show_animation = True
 
