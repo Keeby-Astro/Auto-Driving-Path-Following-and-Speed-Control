@@ -27,6 +27,8 @@ Time, Longitude, Latitude, Speed[mps], Brake_status
 --TODO:
 Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
 tire slip, and other real-world factors.
+
+Smooth Transition of Speed: Implement a smoother transition of speed to avoid jerky movements.
 '''
 
 # Importing Required Libraries
@@ -42,9 +44,9 @@ import concurrent.futures
 
 # Gain Parameters
 k = 0.02   # Stanley control gain
-Kp = 0.7  # PID control gain: P
+Kp = 0.8  # PID control gain: P
 Ki = 0.005  # PID control gain: I
-Kd = 0.7   # PID control gain: D
+Kd = 0.6   # PID control gain: D
 
 # Constants
 dt = 0.1  # Time step
@@ -56,7 +58,7 @@ output_limit = 3.8873  # Acceleration limit of 2014 Nissan Leaf
 show_animation = True
 
 # Target speed in mph to m/s
-TARGET_SPEED_MPH = 5.0
+TARGET_SPEED_MPH = 20.0
 TARGET_SPEED_MPS = TARGET_SPEED_MPH * mile / hour
 
 # Define the state specification
@@ -88,6 +90,15 @@ class State:
         self.v = v
 
     # Update the state of the vehicle
+
+    ############################################################################################################
+    ############################################################################################################
+    
+    # This needs to be updated for the dynamic model of 2014 Nissan Leaf using Lateral and Longitudinal Dynamics
+    
+    ############################################################################################################
+    ############################################################################################################
+
     def update(self, acceleration, delta):
         # Limit the steering angle to the maximum steering angle
         delta = min(max(delta, -max_steer), max_steer)
@@ -423,7 +434,7 @@ def main():
     # Simulation loop with end condition for a single complete path loop
     i = 0
     while target_idx < len(cx) - 1:
-        is_decelerating = state.v > target_speed - 0.1
+        is_decelerating = state.v > target_speed
         ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral, is_decelerating)
         prev_error, integral = new_error, new_integral
         di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
