@@ -25,11 +25,11 @@ Longitude - deg
 Time, Longitude, Latitude, Speed[mps], Brake_status
 
 --TODO:
-1. Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
-   tire slip, and other real-world factors.
+Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
+tire slip, and other real-world factors.
 
-Extra:
-Multi-threading or Multiprocessing: Utilize parallel processing for computationally intensive tasks, such as path planning or sensor data processing.
+Automatic Gain Tuning: Implement an automatic gain tuning algorithm to adjust the PID gains and Stanley Control gains
+based on the vehicle's performance. Avoid going over 5 [mph] speed limit.
 '''
 
 # Importing Required Libraries
@@ -41,18 +41,19 @@ from scipy.constants import mile, kilo, hour
 from numba import njit, float64
 from numba.experimental import jitclass
 import cubic_spline_planner
+import concurrent.futures
 
 # Gain Parameters
-k = 0.01   # Stanley control gain
+k = 0.02   # Stanley control gain
 Kp = 0.95  # PID control gain: P
-Ki = 0.06 # PID control gain: I
-Kd = 0.3  # PID control gain: D
+Ki = 0.03  # PID control gain: I
+Kd = 0.5   # PID control gain: D
 
 # Constants
 dt = 0.1  # Time step
-L = 2.7   # Wheel base of 2014 Nissan Leaf
-max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf
-output_limit = 3.8873 # Acceleration limit of 2014 Nissan Leaf
+L = 2.7   # Wheelbase of 2014 Nissan Leaf
+max_steer = np.radians(31.30412)  # Maximum steering angle of 2014 Nissan Leaf
+output_limit = 3.8873  # Acceleration limit of 2014 Nissan Leaf
 
 # Set to True to show the animation
 show_animation = True
@@ -97,13 +98,25 @@ class State:
         self.x += self.v * np.cos(self.yaw) * dt
         self.y += self.v * np.sin(self.yaw) * dt
         # Update the vehicle's yaw angle
-        self.yaw += self.v / L * np.tan(delta) * dt
+        self.yaw += (self.v / L) * np.tan(delta) * dt
         self.yaw = normalize_angle(self.yaw)
         # Update the vehicle's velocity
         self.v += acceleration * dt
 
         # Prevent velocity from becoming negative
         self.v = max(self.v, 0.0)
+
+# Function to normalize the angle
+@njit(cache=True)
+def normalize_angle(angle):
+    '''
+    Normalize the angle to the range [-pi, pi]
+
+    :param angle: (float) Angle in radians
+
+    :return: (float) Normalized angle
+    '''
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 # Define a hypothetical path planner class
 class PathPlanner:
@@ -113,7 +126,13 @@ class PathPlanner:
         self.obstacles = obstacles
 
     def evaluate_path(self, path):
-        """Calculate the cost of a path considering distance, obstacles, and smoothness."""
+        '''
+        Calculate the cost of a path considering distance, obstacles, and smoothness
+
+        :param path: ([(float, float)]) List of waypoints
+
+        :return: (float) Total cost of the path
+        '''
         distance_cost = np.linalg.norm(np.array(path[-1]) - np.array(self.goal))
         obstacle_cost = sum([1 / np.linalg.norm(np.array(path_point) - np.array(obstacle)) 
                              for path_point in path for obstacle in self.obstacles if np.linalg.norm(np.array(path_point) - np.array(obstacle)) < 1])
@@ -125,7 +144,13 @@ class PathPlanner:
         return total_cost
 
     def generate_candidate_paths(self, num_paths=10):
-        """Generate candidate paths (random paths for simplicity)."""
+        '''
+        Generate candidate paths (random paths for simplicity)
+        
+        :param num_paths: (int) Number of paths to generate
+        
+        :return: ([[(float, float)]]) List of paths
+        '''
         paths = []
         for _ in range(num_paths):
             path = [self.start]
@@ -139,6 +164,14 @@ class PathPlanner:
         return paths
 
 def evaluate_paths_in_parallel(paths, path_planner):
+    '''
+    Evaluate the paths in parallel using the path planner.
+    
+    :param paths: ([[(float, float)]]) List of paths
+    :param path_planner: (PathPlanner) Path planner object
+    
+    :return: ([float]) List of costs for each path
+    '''
     with concurrent.futures.ProcessPoolExecutor() as executor:
         results = list(executor.map(path_planner.evaluate_path, paths))
     return results
@@ -148,18 +181,19 @@ def evaluate_paths_in_parallel(paths, path_planner):
 def pid_control(target, current, prev_error=0.0, integral=0.0):
     '''
     PID controller with Anti-Windup
-    
+
     :param target: (float) Target value
     :param current: (float) Current value
     :param prev_error: (float) Previous error
     :param integral: (float) Integral term
-    
+
     :return: (float) Output value, Error, Integral term
     '''
     # PID control gains
     error = target - current
     p_term = Kp * error
     integral += error * dt
+    integral = min(max(integral, -output_limit / Ki), output_limit / Ki)  # Clamp the integral term
     i_term = Ki * integral
     d_term = Kd * (error - prev_error) / dt
     output = p_term + i_term + d_term
@@ -174,17 +208,27 @@ def pid_control(target, current, prev_error=0.0, integral=0.0):
 
     return output, error, integral
 
-# Function to normalize the angle
-@njit(cache=True)
-def normalize_angle(angle):
+# Stanley control function
+def stanley_control(state, cx, cy, cyaw, last_target_idx):
     '''
-    Normalize the angle to the range [-pi, pi]
+    Stanley steering control.
 
-    :param angle: (float) Angle in radians
+    :param state: (State object)
+    :param cx: ([float])
+    :param cy: ([float])
+    :param cyaw: ([float])
+    :param last_target_idx: (int)
 
-    :return: (float) Normalized angle
+    :return: (float, int)
     '''
-    return (angle + np.pi) % (2 * np.pi) - np.pi
+    epsilon = 1e-5
+    current_target_idx, error_front_axle = calc_target_index(state, cx, cy, last_target_idx)
+    current_target_idx = max(last_target_idx, current_target_idx)
+    theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw)
+    theta_d = np.arctan2(k * error_front_axle, state.v + epsilon)
+    delta = theta_e + theta_d
+
+    return delta, current_target_idx
 
 # Function to calculate the target index
 def calc_target_index(state, cx, cy, last_target_idx):
@@ -213,36 +257,15 @@ def calc_target_index(state, cx, cy, last_target_idx):
 
     return target_idx, error_front_axle
 
-# Stanley control function
-def stanley_control(state, cx, cy, cyaw, last_target_idx):
-    '''
-    Stanley steering control.
-    
-    :param state: (State object)
-    :param cx: ([float])
-    :param cy: ([float])
-    :param cyaw: ([float])
-    :param last_target_idx: (int)
-    
-    :return: (float, int)
-    '''
-    current_target_idx, error_front_axle = calc_target_index(state, cx, cy, last_target_idx)
-    current_target_idx = max(last_target_idx, current_target_idx)
-    theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw)
-    theta_d = np.arctan2(k * error_front_axle, state.v + 1e-5)
-    delta = theta_e + theta_d
-
-    return delta, current_target_idx
-
 # Function to convert latitude and longitude to local x and y
 def convert_to_local_x_y(test_data, lat_table, lon_table):
     '''
     Convert latitude and longitude to local x and y coordinates.
-    
+
     :param test_data: (pd.DataFrame) Test data
     :param lat_table: (pd.DataFrame) Latitude distance to latitude table
     :param lon_table: (pd.DataFrame) Longitude distance to longitude table
-    
+
     :return: (np.array, np.array) Local x and y coordinates
     '''
     lat_interp = interp1d(lat_table['Latitude - deg'], lat_table['1deg of Latitude (Metres)'], fill_value="extrapolate")
@@ -255,7 +278,6 @@ def convert_to_local_x_y(test_data, lat_table, lon_table):
 
     return longitude_meters, latitude_meters
 
-# Main function
 def main():
     latitude_distance_to_latitude = pd.read_csv('latitude_distance_to_latitude.csv')
     longitude_distance_to_longitude = pd.read_csv('longitude_distance_to_longitude.csv')
@@ -265,47 +287,67 @@ def main():
     )
     test_data_final = test_data_final.iloc[15:]
 
-    # Kalman Filter for GPS data
-    def kalman_filter(z, x_est, P_est, F, H, Q, R):
+    # Extended Kalman Filter for GPS data
+    def ekf_predict(x_est, P_est, F, Q):
         '''
-        Kalman Filter for GPS data.
-        
-        :param z: (np.array) Measurement
+        EKF Prediction step.
+
         :param x_est: (np.array) State estimate
         :param P_est: (np.array) Estimate covariance
         :param F: (np.array) State transition matrix
-        :param H: (np.array) Observation matrix
         :param Q: (np.array) Process noise covariance
-        :param R: (np.array) Measurement noise covariance
-        
-        :return: (np.array, np.array) Updated state estimate, Updated estimate covariance
+
+        :return: (np.array, np.array) Predicted state estimate, Predicted estimate covariance
         '''
-        # Prediction
         x_pred = F @ x_est
         P_pred = F @ P_est @ F.T + Q
+        return x_pred, P_pred
 
-        # Update
+    def ekf_update(x_pred, P_pred, z, H, R):
+        '''
+        EKF Update step.
+
+        :param x_pred: (np.array) Predicted state estimate
+        :param P_pred: (np.array) Predicted estimate covariance
+        :param z: (np.array) Measurement
+        :param H: (np.array) Observation matrix
+        :param R: (np.array) Measurement noise covariance
+
+        :return: (np.array, np.array) Updated state estimate, Updated estimate covariance
+        '''
         y = z - H @ x_pred
         S = H @ P_pred @ H.T + R
         K = P_pred @ H.T @ np.linalg.inv(S)
         x_est = x_pred + K @ y
         P_est = (np.eye(len(K)) - K @ H) @ P_pred
-
         return x_est, P_est
 
-    # Initialize Kalman Filter parameters
-    F = np.eye(4)        # State transition matrix
-    H = np.eye(4)        # Observation matrix
-    Q = np.eye(4) * 0.1  # Process noise covariance
-    R = np.eye(4) * 0.8  # Measurement noise covariance
-    x_est = np.zeros(4)  # Initial state estimate
-    P_est = np.eye(4)    # Initial estimate covariance
+    # Initialize EKF parameters
+    dt = 0.1  # Time step
+    F = np.array([[1, 0, dt, 0],
+                  [0, 1, 0, dt],
+                  [0, 0, 1, 0],
+                  [0, 0, 0, 1]])  # State transition matrix
+    H = np.array([[1, 0, 0, 0],
+                  [0, 1, 0, 0]])  # Observation matrix
+    Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2  # Process noise covariance
+    R = np.diag([0.75, 0.75]) ** 2  # Measurement noise covariance (GPS measurement noise)
+    x_est = np.zeros(4)  # Initial state estimate [x, y, v_x, v_y]
+    P_est = np.eye(4)  # Initial estimate covariance
 
-    # Apply Kalman Filter to the data
+    # Apply EKF to the data
     filtered_data = []
     for i in range(len(test_data_final)):
-        z = np.array([test_data_final['Local_X'].iloc[i], test_data_final['Local_Y'].iloc[i], 0, 0])
-        x_est, P_est = kalman_filter(z, x_est, P_est, F, H, Q, R)
+        z = np.array([test_data_final['Local_X'].iloc[i], test_data_final['Local_Y'].iloc[i]])
+
+        # If not the first measurement, perform prediction
+        if i > 0:
+            x_pred, P_pred = ekf_predict(x_est, P_est, F, Q)
+        else:
+            x_pred, P_pred = x_est, P_est
+
+        # Perform update
+        x_est, P_est = ekf_update(x_pred, P_pred, z, H, R)
         filtered_data.append(x_est[:2])
 
     filtered_data = np.array(filtered_data)
@@ -315,8 +357,8 @@ def main():
     # Plot the GPS trajectory
     plt.figure(figsize=(8, 8))
     size = 100
-    plt.plot(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='r')
-    plt.plot(test_data_final['Filtered_X'], test_data_final['Filtered_Y'], label='Filtered Trajectory', color='b')
+    plt.scatter(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='b', s = 10)
+    plt.plot(test_data_final['Filtered_X'], test_data_final['Filtered_Y'], label='Filtered Trajectory', color='r')
     plt.scatter(test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0], marker='*',
                  color='g', s=size, label='Start')
     plt.scatter(test_data_final['Local_X'].iloc[-1], test_data_final['Local_Y'].iloc[-1], marker='<',
@@ -338,9 +380,9 @@ def main():
 
     # Initial state based on the first data row
     initial_x, initial_y = test_data_final['Filtered_X'].iloc[0], test_data_final['Filtered_Y'].iloc[0]
-    dx_init, dy_init = test_data_final['Filtered_X'].iloc[1] - initial_x, test_data_final['Filtered_Y'].iloc[1] - initial_y
+    dx_init = test_data_final['Filtered_X'].iloc[1] - initial_x
+    dy_init = test_data_final['Filtered_Y'].iloc[1] - initial_y
     initial_yaw = np.arctan2(dy_init, dx_init)
-    initial_yaw = cyaw[0]
     state = State(float(initial_x), float(initial_y), float(initial_yaw), 0.0)
 
     # Set cx, cy, cyaw, and ck as arrays generated from cubic spline planner
@@ -380,10 +422,10 @@ def main():
         ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral)
         prev_error, integral = new_error, new_integral
         di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
-        
+
         # Adjust target speed based on the turning angle
         angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
-        if angle_diff > np.radians(5):  # Slow down if the turning angle is greater than 10 degrees
+        if angle_diff > np.radians(5):  # Slow down if the turning angle is greater than 5 degrees
             target_speed = max(TARGET_SPEED_MPS * 0.45, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
         else:
             target_speed = TARGET_SPEED_MPS
@@ -420,7 +462,6 @@ def main():
         plt.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
         plt.scatter(cx[-1], cy[-1], marker='<', color='k', s=size, label='End')
         plt.plot(cx, cy, "r", label="Course")
-        
         plt.plot(x_history, y_history, "-b", label="Trajectory")
         plt.xlabel("X [m]")
         plt.ylabel("Y [m]")
