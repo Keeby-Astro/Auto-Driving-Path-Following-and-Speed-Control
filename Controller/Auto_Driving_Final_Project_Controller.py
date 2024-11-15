@@ -27,9 +27,6 @@ Time, Longitude, Latitude, Speed[mps], Brake_status
 --TODO:
 Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
 tire slip, and other real-world factors.
-
-Automatic Gain Tuning: Implement an automatic gain tuning algorithm to adjust the PID gains and Stanley Control gains
-based on the vehicle's performance. Avoid going over 5 [mph] speed limit.
 '''
 
 # Importing Required Libraries
@@ -45,9 +42,9 @@ import concurrent.futures
 
 # Gain Parameters
 k = 0.02   # Stanley control gain
-Kp = 0.95  # PID control gain: P
-Ki = 0.03  # PID control gain: I
-Kd = 0.5   # PID control gain: D
+Kp = 0.7  # PID control gain: P
+Ki = 0.005  # PID control gain: I
+Kd = 0.7   # PID control gain: D
 
 # Constants
 dt = 0.1  # Time step
@@ -178,24 +175,30 @@ def evaluate_paths_in_parallel(paths, path_planner):
 
 # PID controller with Anti-Windup
 @njit(cache=True)
-def pid_control(target, current, prev_error=0.0, integral=0.0):
+def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=False):
     '''
-    PID controller with Anti-Windup
+    PID controller with Anti-Windup and smoother deceleration
 
     :param target: (float) Target value
     :param current: (float) Current value
     :param prev_error: (float) Previous error
     :param integral: (float) Integral term
+    :param is_decelerating: (bool) Flag for deceleration
 
     :return: (float) Output value, Error, Integral term
     '''
-    # PID control gains
     error = target - current
     p_term = Kp * error
     integral += error * dt
-    integral = min(max(integral, -output_limit / Ki), output_limit / Ki)  # Clamp the integral term
+
+    # Smooth deceleration by reducing the effect of the derivative term
+    if is_decelerating:
+        integral = min(max(integral, -output_limit / Ki), output_limit / Ki)  # Clamp the integral term
+        d_term = Kd * (error - prev_error) / (3 * dt)  # Reduce derivative effect by 1/3
+    else:
+        d_term = Kd * (error - prev_error) / dt
+
     i_term = Ki * integral
-    d_term = Kd * (error - prev_error) / dt
     output = p_term + i_term + d_term
 
     # Anti-Windup
@@ -207,6 +210,7 @@ def pid_control(target, current, prev_error=0.0, integral=0.0):
         integral -= error * dt
 
     return output, error, integral
+
 
 # Stanley control function
 def stanley_control(state, cx, cy, cyaw, last_target_idx):
@@ -419,7 +423,8 @@ def main():
     # Simulation loop with end condition for a single complete path loop
     i = 0
     while target_idx < len(cx) - 1:
-        ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral)
+        is_decelerating = state.v > target_speed - 0.1
+        ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral, is_decelerating)
         prev_error, integral = new_error, new_integral
         di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
 
