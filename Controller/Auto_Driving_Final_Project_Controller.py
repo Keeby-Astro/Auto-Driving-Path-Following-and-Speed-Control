@@ -27,8 +27,6 @@ Time, Longitude, Latitude, Speed[mps], Brake_status
 --TODO:
 Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
 tire slip, and other real-world factors.
-
-Smooth Transition of Speed: Implement a smoother transition of speed to avoid jerky movements.
 '''
 
 # Importing Required Libraries
@@ -44,30 +42,30 @@ import concurrent.futures
 
 # Gain Parameters
 k = 0.02   # Stanley control gain
-Kp = 0.8  # PID control gain: P
-Ki = 0.005  # PID control gain: I
+Kp = 0.8   # PID control gain: P
+Ki = 0.005 # PID control gain: I
 Kd = 0.6   # PID control gain: D
 
 # Constants
-dt = 0.1  # Time step
-L = 2.7   # Wheelbase of 2014 Nissan Leaf
-max_steer = np.radians(31.30412)  # Maximum steering angle of 2014 Nissan Leaf
-output_limit = 3.8873  # Acceleration limit of 2014 Nissan Leaf
+dt = 0.1                         # Time step
+gravity = 9.81                   # Gravity constant (m/s^2)
+air_density = 1.293              # Air density (kg/m^3)
+max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf
+output_limit = 3.8873            # Acceleration limit of 2014 Nissan Leaf
 
-# Real World factors(for 2014 Nissan Leaf)
-battery = 24 #kwh
-drag_coeff = 0.28
-frictionCoeff = 0.015
-vehicle_mass = 1477 #kg
-gravity = 9.8
-frontal_area = 2.14
-air_density = 1.293
+# Real World factors (for 2014 Nissan Leaf)
+L = 2.7               # Wheelbase of 2014 Nissan Leaf (m)
+battery = 24          # Battery capacity of 2014 Nissan Leaf (kWh)
+drag_coeff = 0.28     # Drag coefficient of 2014 Nissan Leaf
+frictionCoeff = 0.015 # Rolling friction coefficient of 2014 Nissan Leaf
+vehicle_mass = 1477   # Vehicle mass of 2014 Nissan Leaf (kg)
+frontal_area = 2.14   # Frontal area of 2014 Nissan Leaf (m^2)
 
 # Set to True to show the animation
 show_animation = True
 
 # Target speed in mph to m/s
-TARGET_SPEED_MPH = 20.0
+TARGET_SPEED_MPH = 5
 TARGET_SPEED_MPS = TARGET_SPEED_MPH * mile / hour
 
 # Define the state specification
@@ -93,10 +91,10 @@ class State:
     '''
     # Initialize the state of the vehicle
     def __init__(self, x, y, yaw, v):
-        self.x = x
-        self.y = y
-        self.yaw = yaw
-        self.v = v
+        self.x = x     # x-coordinate
+        self.y = y     # y-coordinate
+        self.yaw = yaw # yaw angle
+        self.v = v     # velocity
 
     # Update the state of the vehicle
 
@@ -215,6 +213,12 @@ def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=F
     if is_decelerating:
         integral = min(max(integral, -output_limit / Ki), output_limit / Ki)  # Clamp the integral term
         d_term = Kd * (error - prev_error) / (3 * dt)  # Reduce derivative effect by 1/3
+
+        # Lower the proportional term to avoid overshooting
+        if error < 0:
+            p_term = 0.5 * p_term
+        else:
+            p_term = 1.5 * p_term
     else:
         d_term = Kd * (error - prev_error) / dt
 
@@ -248,8 +252,8 @@ def stanley_control(state, cx, cy, cyaw, last_target_idx):
     epsilon = 1e-5
     current_target_idx, error_front_axle = calc_target_index(state, cx, cy, last_target_idx)
     current_target_idx = max(last_target_idx, current_target_idx)
-    theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw)
-    theta_d = np.arctan2(k * error_front_axle, state.v + epsilon)
+    theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw) # Heading error
+    theta_d = np.arctan2(k * error_front_axle, state.v + epsilon)   # Cross track error
     delta = theta_e + theta_d
 
     return delta, current_target_idx
@@ -323,8 +327,8 @@ def main():
 
         :return: (np.array, np.array) Predicted state estimate, Predicted estimate covariance
         '''
-        x_pred = F @ x_est
-        P_pred = F @ P_est @ F.T + Q
+        x_pred = F @ x_est           # State prediction
+        P_pred = F @ P_est @ F.T + Q # Covariance prediction
         return x_pred, P_pred
 
     def ekf_update(x_pred, P_pred, z, H, R):
@@ -339,25 +343,25 @@ def main():
 
         :return: (np.array, np.array) Updated state estimate, Updated estimate covariance
         '''
-        y = z - H @ x_pred
-        S = H @ P_pred @ H.T + R
-        K = P_pred @ H.T @ np.linalg.inv(S)
-        x_est = x_pred + K @ y
-        P_est = (np.eye(len(K)) - K @ H) @ P_pred
+        y = z - H @ x_pred                        # Measurement residual
+        S = H @ P_pred @ H.T + R                  # Residual covariance
+        K = P_pred @ H.T @ np.linalg.inv(S)       # Kalman gain
+        x_est = x_pred + K @ y                    # State update
+        P_est = (np.eye(len(K)) - K @ H) @ P_pred # Covariance update
         return x_est, P_est
 
     # Initialize EKF parameters
     dt = 0.1  # Time step
-    F = np.array([[1, 0, dt, 0],
+    F = np.array([[1, 0, dt, 0], # State transition matrix
                   [0, 1, 0, dt],
                   [0, 0, 1, 0],
-                  [0, 0, 0, 1]])  # State transition matrix
-    H = np.array([[1, 0, 0, 0],
-                  [0, 1, 0, 0]])  # Observation matrix
-    Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2  # Process noise covariance
-    R = np.diag([0.75, 0.75]) ** 2  # Measurement noise covariance (GPS measurement noise)
+                  [0, 0, 0, 1]])  
+    H = np.array([[1, 0, 0, 0],  # Observation matrix
+                  [0, 1, 0, 0]])  
+    Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2 # Process noise covariance
+    R = np.diag([0.75, 0.75]) ** 2         # Measurement noise covariance (GPS measurement noise)
     x_est = np.zeros(4)  # Initial state estimate [x, y, v_x, v_y]
-    P_est = np.eye(4)  # Initial estimate covariance
+    P_est = np.eye(4)    # Initial estimate covariance
 
     # Apply EKF to the data
     filtered_data = []
@@ -374,7 +378,10 @@ def main():
         x_est, P_est = ekf_update(x_pred, P_pred, z, H, R)
         filtered_data.append(x_est[:2])
 
+    # Convert the filtered data to a numpy array
     filtered_data = np.array(filtered_data)
+
+    # Update the filtered data in the test data
     test_data_final['Filtered_X'] = filtered_data[:, 0]
     test_data_final['Filtered_Y'] = filtered_data[:, 1]
 
@@ -455,9 +462,10 @@ def main():
         else:
             target_speed = TARGET_SPEED_MPS
 
-        state.update(ai, di)
-        time += dt
-        i += 1
+        # Update loop variables
+        state.update(ai, di) # Update the state of the vehicle
+        time += dt           # Update the time
+        i += 1               # Update the step count
 
         # Extend history arrays if needed
         if i >= len(x_history):
@@ -467,6 +475,7 @@ def main():
         # Store the state in the history
         x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
 
+        # Update the visualization
         if show_animation:
             line_trajectory.set_data(x_history[:i+1], y_history[:i+1])
             point_target.set_data([cx[target_idx]], [cy[target_idx]])
