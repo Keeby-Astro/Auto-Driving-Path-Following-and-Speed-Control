@@ -23,10 +23,6 @@ Longitude - deg
 
 --Test Data Column Names:
 Time, Longitude, Latitude, Speed[mps], Brake_status
-
---TODO:
-Dynamic Models: Use more detailed vehicle dynamics models (e.g., dynamic bicycle model) that account for inertia,
-tire slip, and other real-world factors.
 '''
 
 # Importing Required Libraries
@@ -48,28 +44,35 @@ Ki = 0.005 # PID control gain: I
 Kd = 0.6   # PID control gain: D
 
 # Constants
-dt = 0.1    # Time step
-g = 9.81    # Gravity constant (m/s^2)
-rho = 1.293 # Air density (kg/m^3)
-beta = 0    # Road gradient (radians) [Assume level road]
-
+dt = 0.1       # Time step
+g = 9.81       # Gravity constant (m/s^2)
+rho = 1.293    # Air density (kg/m^3)
+F_xr = 0       # Rolling resistance force (N)
+f_roll = 0.015 # Rolling resistance coefficient
+beta = 0       # Road slope angle (radians) [Assumed to be 0]
 
 # Real World factors (for 2014 Nissan Leaf)
 L = 2.7                          # Wheelbase of 2014 Nissan Leaf (m)
+C_d = 0.28                       # Drag coefficient of 2014 Nissan Leaf
+A = 2.303995                     # Frontal area of 2014 Nissan Leaf (m^2)
+m = 1477                         # Vehicle mass of 2014 Nissan Leaf (kg)
+I = 1098.603                     # Moment of inertia of 2014 Nissan Leaf (kg*m^2)
+L_veh = 4.445                    # Length of 2014 Nissan Leaf (m)
+L_f = 1.188                      # Distance from the center of mass to the front axle (m)
+L_r = 1.512                      # Distance from the center of mass to the rear axle (m)
+C_af  = 0.12                     # Cornering Stiffness Coefficient of front bias tires
+C_ar  = 0.12                     # Cornering Stiffness Coefficient of rear bias tires
 battery = 24                     # Battery capacity of 2014 Nissan Leaf (kWh)
-drag_coeff = 0.28                # Drag coefficient of 2014 Nissan Leaf
-frictionCoeff = 0.015            # Rolling friction coefficient of 2014 Nissan Leaf
-vehicle_mass = 1477              # Vehicle mass of 2014 Nissan Leaf (kg)
-frontal_area = 2.14              # Frontal area of 2014 Nissan Leaf (m^2)
 max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf (radians)
 output_limit = 3.8873            # Acceleration limit of 2014 Nissan Leaf (m/s^2)
+# di: Steering angle (radians)
 
 # Set to True to show the animation
 show_animation = True
 
 # Target speed in mph to m/s
-TARGET_SPEED_MPH = 5
-TARGET_SPEED_MPS = TARGET_SPEED_MPH * mile / hour
+TARGET_SPEED_MPH = 5 # (mph)
+TARGET_SPEED_MPS = TARGET_SPEED_MPH * mile / hour # (m/s)
 
 # Define the state specification
 state_spec = [
@@ -101,13 +104,13 @@ class State:
 
     # Update the state of the vehicle
 
-    ############################################################################################################
-    ############################################################################################################
+    ##################################################################################################################################
+    ##################################################################################################################################
     
-    # This needs to be updated for the dynamic model of 2014 Nissan Leaf using Lateral and Longitudinal Dynamics
+    # This (def update function) needs to be updated for the dynamic model of 2014 Nissan Leaf using Lateral and Longitudinal Dynamics
     
-    ############################################################################################################
-    ############################################################################################################
+    ##################################################################################################################################
+    ##################################################################################################################################
 
     def update(self, acceleration, delta):
         # Limit the steering angle to the maximum steering angle
@@ -456,7 +459,7 @@ def main():
         is_decelerating = state.v > target_speed
         ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral, is_decelerating)
         prev_error, integral = new_error, new_integral
-        di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
+        di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx) 
 
         # Adjust target speed based on the turning angle
         angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
