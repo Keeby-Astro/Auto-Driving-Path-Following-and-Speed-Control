@@ -38,34 +38,35 @@ import cubic_spline_planner
 import concurrent.futures
 
 # Gain Parameters
-k = 0.02   # Stanley control gain
+k  = 0.02  # Stanley control gain
 Kp = 0.8   # PID control gain: P
 Ki = 0.005 # PID control gain: I
 Kd = 0.6   # PID control gain: D
 
 # Constants
-dt = 0.1       # Time step
-g = 9.81       # Gravity constant (m/s^2)
-rho = 1.293    # Air density (kg/m^3)
-F_xr = 0       # Rolling resistance force (N)
+dt     = 0.1   # Time step
+g      = 9.81  # Gravity constant (m/s^2)
+rho    = 1.293 # Air density (kg/m^3)
+F_xr   = 0     # Rolling resistance force (N)
 f_roll = 0.015 # Rolling resistance coefficient
-beta = 0       # Road slope angle (radians) [Assumed to be 0]
+beta   = 0     # Road slope angle (radians) [Assumed to be 0]
 
-# Real World factors (for 2014 Nissan Leaf)
-L = 2.7                          # Wheelbase of 2014 Nissan Leaf (m)
-C_d = 0.28                       # Drag coefficient of 2014 Nissan Leaf
-A = 2.303995                     # Frontal area of 2014 Nissan Leaf (m^2)
-m = 1477                         # Vehicle mass of 2014 Nissan Leaf (kg)
-I = 1098.603                     # Moment of inertia of 2014 Nissan Leaf (kg*m^2)
-L_veh = 4.445                    # Length of 2014 Nissan Leaf (m)
-L_f = 1.188                      # Distance from the center of mass to the front axle (m)
-L_r = 1.512                      # Distance from the center of mass to the rear axle (m)
-C_af  = 0.12                     # Cornering Stiffness Coefficient of front bias tires
-C_ar  = 0.12                     # Cornering Stiffness Coefficient of rear bias tires
-battery = 24                     # Battery capacity of 2014 Nissan Leaf (kWh)
+# Real World Vehicle Parameters
+L         = 2.7                  # Wheelbase of 2014 Nissan Leaf (m)
+C_d       = 0.28                 # Drag coefficient of 2014 Nissan Leaf
+A         = 2.303995             # Frontal area of 2014 Nissan Leaf (m^2)
+m         = 1477                 # Vehicle mass of 2014 Nissan Leaf (kg)
+I         = 1098.603             # Moment of inertia of 2014 Nissan Leaf (kg*m^2)
+L_veh     = 4.445                # Length of 2014 Nissan Leaf (m)
+L_f       = 1.188                # Distance from the center of mass to the front axle (m)
+L_r       = 1.512                # Distance from the center of mass to the rear axle (m)
+C_af      = 0.12                 # Cornering Stiffness Coefficient of front bias tires
+C_ar      = 0.12                 # Cornering Stiffness Coefficient of rear bias tires
+battery   = 24                   # Battery capacity of 2014 Nissan Leaf (kWh)
 max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf (radians)
-output_limit = 3.8873            # Acceleration limit of 2014 Nissan Leaf (m/s^2)
-# di: Steering angle (radians)
+
+# Output Limit for Anti-Windup
+output_limit = 3.8873 # Acceleration limit of 2014 Nissan Leaf (m/s^2)
 
 # Set to True to show the animation
 show_animation = True
@@ -97,23 +98,42 @@ class State:
     '''
     # Initialize the state of the vehicle
     def __init__(self, x, y, yaw, v):
-        self.x = x     # x-coordinate
-        self.y = y     # y-coordinate
+        self.x   = x   # x-coordinate
+        self.y   = y   # y-coordinate
         self.yaw = yaw # yaw angle
-        self.v = v     # velocity
+        self.v   = v   # velocity
 
-    # Update the state of the vehicle
+    # Update the state of the vehicle with enhanced dynamics
     def update(self, acceleration, delta):
+        '''
+        Update the state of the vehicle with enhanced dynamics using real-world parameters.
+
+        :param acceleration: (float) Acceleration command (m/s^2)
+        :param delta: (float) Steering angle (radians)
+
+        :return: None
+        '''
         # Limit the steering angle to the maximum steering angle
         delta = min(max(delta, -max_steer), max_steer)
+
+        # Compute resistance forces
+        F_drag = 0.5 * rho * C_d * A * self.v**2 # Aerodynamic drag force
+        F_rolling = m * g * f_roll               # Rolling resistance force
+        F_resistance = F_drag + F_rolling        # Total resistance force
+
+        # Compute net acceleration
+        a_net = acceleration - F_resistance / m
+
+        # Update the vehicle's velocity
+        self.v += a_net * dt
+
         # Update the vehicle's position
         self.x += self.v * np.cos(self.yaw) * dt
         self.y += self.v * np.sin(self.yaw) * dt
-        # Update the vehicle's yaw angle
+
+        # Update the vehicle's yaw angle using bicycle model
         self.yaw += (self.v / L) * np.tan(delta) * dt
         self.yaw = normalize_angle(self.yaw)
-        # Update the vehicle's velocity
-        self.v += acceleration * dt
 
         # Prevent velocity from becoming negative
         self.v = max(self.v, 0.0)
@@ -129,64 +149,6 @@ def normalize_angle(angle):
     :return: (float) Normalized angle
     '''
     return (angle + np.pi) % (2 * np.pi) - np.pi
-
-# Define a hypothetical path planner class
-class PathPlanner:
-    def __init__(self, start, goal, obstacles):
-        self.start = start
-        self.goal = goal
-        self.obstacles = obstacles
-
-    def evaluate_path(self, path):
-        '''
-        Calculate the cost of a path considering distance, obstacles, and smoothness
-
-        :param path: ([(float, float)]) List of waypoints
-
-        :return: (float) Total cost of the path
-        '''
-        distance_cost = np.linalg.norm(np.array(path[-1]) - np.array(self.goal))
-        obstacle_cost = sum([1 / np.linalg.norm(np.array(path_point) - np.array(obstacle)) 
-                             for path_point in path for obstacle in self.obstacles if np.linalg.norm(np.array(path_point) - np.array(obstacle)) < 1])
-        smoothness_cost = sum([np.linalg.norm(np.array(path[i+1]) - 2 * np.array(path[i]) + np.array(path[i-1])) 
-                               for i in range(1, len(path) - 1)])
-
-        # Total cost is a weighted sum of distance, obstacle proximity, and smoothness
-        total_cost = distance_cost + 10 * obstacle_cost + 5 * smoothness_cost
-        return total_cost
-
-    def generate_candidate_paths(self, num_paths=10):
-        '''
-        Generate candidate paths (random paths for simplicity)
-        
-        :param num_paths: (int) Number of paths to generate
-        
-        :return: ([[(float, float)]]) List of paths
-        '''
-        paths = []
-        for _ in range(num_paths):
-            path = [self.start]
-            for _ in range(10):  # Assume each path has 10 waypoints
-                # Generate a random waypoint near the previous one
-                next_point = (path[-1][0] + np.random.uniform(-1, 1), 
-                              path[-1][1] + np.random.uniform(-1, 1))
-                path.append(next_point)
-            path.append(self.goal)
-            paths.append(path)
-        return paths
-
-def evaluate_paths_in_parallel(paths, path_planner):
-    '''
-    Evaluate the paths in parallel using the path planner.
-    
-    :param paths: ([[(float, float)]]) List of paths
-    :param path_planner: (PathPlanner) Path planner object
-    
-    :return: ([float]) List of costs for each path
-    '''
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        results = list(executor.map(path_planner.evaluate_path, paths))
-    return results
 
 # PID controller with Anti-Windup
 @njit(cache=True)
@@ -231,7 +193,6 @@ def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=F
         integral -= error * dt
 
     return output, error, integral
-
 
 # Stanley control function
 def stanley_control(state, cx, cy, cyaw, last_target_idx):
@@ -302,6 +263,64 @@ def convert_to_local_x_y(test_data, lat_table, lon_table):
     longitude_meters = (test_data['Longitude'].values - test_data['Longitude'].values[0]) * longitude_meters_per_degree
 
     return longitude_meters, latitude_meters
+
+# Define a hypothetical path planner class
+class PathPlanner:
+    def __init__(self, start, goal, obstacles):
+        self.start = start
+        self.goal = goal
+        self.obstacles = obstacles
+
+    def evaluate_path(self, path):
+        '''
+        Calculate the cost of a path considering distance, obstacles, and smoothness
+
+        :param path: ([(float, float)]) List of waypoints
+
+        :return: (float) Total cost of the path
+        '''
+        distance_cost = np.linalg.norm(np.array(path[-1]) - np.array(self.goal))
+        obstacle_cost = sum([1 / np.linalg.norm(np.array(path_point) - np.array(obstacle)) 
+                             for path_point in path for obstacle in self.obstacles if np.linalg.norm(np.array(path_point) - np.array(obstacle)) < 1])
+        smoothness_cost = sum([np.linalg.norm(np.array(path[i+1]) - 2 * np.array(path[i]) + np.array(path[i-1])) 
+                               for i in range(1, len(path) - 1)])
+
+        # Total cost is a weighted sum of distance, obstacle proximity, and smoothness
+        total_cost = distance_cost + 10 * obstacle_cost + 5 * smoothness_cost
+        return total_cost
+
+    def generate_candidate_paths(self, num_paths=10):
+        '''
+        Generate candidate paths (random paths for simplicity)
+        
+        :param num_paths: (int) Number of paths to generate
+        
+        :return: ([[(float, float)]]) List of paths
+        '''
+        paths = []
+        for _ in range(num_paths):
+            path = [self.start]
+            for _ in range(10):  # Assume each path has 10 waypoints
+                # Generate a random waypoint near the previous one
+                next_point = (path[-1][0] + np.random.uniform(-1, 1), 
+                              path[-1][1] + np.random.uniform(-1, 1))
+                path.append(next_point)
+            path.append(self.goal)
+            paths.append(path)
+        return paths
+
+def evaluate_paths_in_parallel(paths, path_planner):
+    '''
+    Evaluate the paths in parallel using the path planner.
+    
+    :param paths: ([[(float, float)]]) List of paths
+    :param path_planner: (PathPlanner) Path planner object
+    
+    :return: ([float]) List of costs for each path
+    '''
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results = list(executor.map(path_planner.evaluate_path, paths))
+    return results
 
 def main():
     latitude_distance_to_latitude = pd.read_csv('latitude_distance_to_latitude.csv')
@@ -385,7 +404,7 @@ def main():
     # Plot the GPS trajectory
     plt.figure(figsize=(8, 8))
     size = 100
-    plt.scatter(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='b', s = 10)
+    plt.scatter(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='b', s=10)
     plt.plot(test_data_final['Filtered_X'], test_data_final['Filtered_Y'], label='Filtered Trajectory', color='r')
     plt.scatter(test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0], marker='*',
                  color='g', s=size, label='Start')
