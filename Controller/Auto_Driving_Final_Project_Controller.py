@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.constants import mile, kilo, hour
+from scipy.signal import savgol_filter
 from numba import njit, float64
 from numba.experimental import jitclass
 import cubic_spline_planner
@@ -47,19 +48,21 @@ Ki = 0.005 # PID control gain: I
 Kd = 0.6   # PID control gain: D
 
 # Constants
-dt = 0.1                         # Time step
-gravity = 9.81                   # Gravity constant (m/s^2)
-air_density = 1.293              # Air density (kg/m^3)
-max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf
-output_limit = 3.8873            # Acceleration limit of 2014 Nissan Leaf
+dt = 0.1    # Time step
+g = 9.81    # Gravity constant (m/s^2)
+rho = 1.293 # Air density (kg/m^3)
+beta = 0    # Road gradient (radians) [Assume level road]
+
 
 # Real World factors (for 2014 Nissan Leaf)
-L = 2.7               # Wheelbase of 2014 Nissan Leaf (m)
-battery = 24          # Battery capacity of 2014 Nissan Leaf (kWh)
-drag_coeff = 0.28     # Drag coefficient of 2014 Nissan Leaf
-frictionCoeff = 0.015 # Rolling friction coefficient of 2014 Nissan Leaf
-vehicle_mass = 1477   # Vehicle mass of 2014 Nissan Leaf (kg)
-frontal_area = 2.14   # Frontal area of 2014 Nissan Leaf (m^2)
+L = 2.7                          # Wheelbase of 2014 Nissan Leaf (m)
+battery = 24                     # Battery capacity of 2014 Nissan Leaf (kWh)
+drag_coeff = 0.28                # Drag coefficient of 2014 Nissan Leaf
+frictionCoeff = 0.015            # Rolling friction coefficient of 2014 Nissan Leaf
+vehicle_mass = 1477              # Vehicle mass of 2014 Nissan Leaf (kg)
+frontal_area = 2.14              # Frontal area of 2014 Nissan Leaf (m^2)
+max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf (radians)
+output_limit = 3.8873            # Acceleration limit of 2014 Nissan Leaf (m/s^2)
 
 # Set to True to show the animation
 show_animation = True
