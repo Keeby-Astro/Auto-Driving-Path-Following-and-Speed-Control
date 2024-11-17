@@ -103,15 +103,6 @@ class State:
         self.v = v     # velocity
 
     # Update the state of the vehicle
-
-    ##################################################################################################################################
-    ##################################################################################################################################
-    
-    # This (def update function) needs to be updated for the dynamic model of 2014 Nissan Leaf using Lateral and Longitudinal Dynamics
-    
-    ##################################################################################################################################
-    ##################################################################################################################################
-
     def update(self, acceleration, delta):
         # Limit the steering angle to the maximum steering angle
         delta = min(max(delta, -max_steer), max_steer)
