@@ -1,11 +1,10 @@
-# Auto Driving Final Project
+# Auto Driving GPS Data Plot
 # Names: Caden Matthews, Jacob Ferrell, James Ouellette, Lin Tan, and David Yun
 
 '''
---Problem Statement:
-Design a vehicle speed control and path following control to track the gps path below
-(Target speed is 5 [mph]; Original data is attached).
-Develop the controls in simulation using python for verification purpose.
+-- Purpose:
+This code convert the Latitude and Longitude coordinates of the GPS data of the
+autonomous 2014 Nissan Leaf vehicle to X/Y coordinates centered at (0,0).
 
 --Original Data is attached:
 Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv
