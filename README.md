@@ -68,14 +68,6 @@ pip install numpy matplotlib pandas scipy numba
 - **Path Tracking Plot:** Displays the GPS path with start and end markers, and the vehicle's trajectory as it follows the path.
 - **Speed Profile Plot:** Plots the speed of the vehicle over time, showing its adherence to the target speed.
 
-## Future Improvements
-
-### 1. Enhanced Vehicle Dynamics
-Consider using a more complex vehicle dynamics model to better simulate tire slip, road conditions, and other real-world factors.
-
-### 2. Parallel Processing
-Implement multithreading or multiprocessing for handling intensive tasks, such as real-time path planning and data filtering.
-
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for more details.
