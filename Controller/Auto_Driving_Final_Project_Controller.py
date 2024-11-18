@@ -414,6 +414,10 @@ def main():
     # Convert the filtered data to a numpy array
     filtered_data = np.array(filtered_data)
 
+    # Smooth the filtered data with Savitzky-Golay filter
+    filtered_data[:, 0] = savgol_filter(filtered_data[:, 0], window_length=11, polyorder=2)
+    filtered_data[:, 1] = savgol_filter(filtered_data[:, 1], window_length=11, polyorder=2)
+
     # Update the filtered data in the test data
     test_data_final['Filtered_X'] = filtered_data[:, 0]
     test_data_final['Filtered_Y'] = filtered_data[:, 1]
