@@ -266,6 +266,62 @@ def convert_to_local_x_y(test_data, lat_table, lon_table):
 
     return longitude_meters, latitude_meters
 
+# Define a hypothetical path planner class
+class PathPlanner:
+    def __init__(self, start, goal, obstacles):
+        self.start = start
+        self.goal = goal
+        self.obstacles = obstacles
+
+    def evaluate_path(self, path):
+        '''
+        Calculate the cost of a path considering distance, obstacles, and smoothness
+        :param path: ([(float, float)]) List of waypoints
+        :return: (float) Total cost of the path
+        '''
+        distance_cost = np.linalg.norm(np.array(path[-1]) - np.array(self.goal))
+        obstacle_cost = sum([1 / np.linalg.norm(np.array(path_point) - np.array(obstacle)) 
+                             for path_point in path for obstacle in self.obstacles if np.linalg.norm(np.array(path_point) - np.array(obstacle)) < 1])
+        smoothness_cost = sum([np.linalg.norm(np.array(path[i+1]) - 2 * np.array(path[i]) + np.array(path[i-1])) 
+                               for i in range(1, len(path) - 1)])
+
+        # Total cost is a weighted sum of distance, obstacle proximity, and smoothness
+        total_cost = distance_cost + 10 * obstacle_cost + 5 * smoothness_cost
+        return total_cost
+
+    def generate_candidate_paths(self, num_paths=10):
+        '''
+        Generate candidate paths (random paths for simplicity)
+        
+        :param num_paths: (int) Number of paths to generate
+        
+        :return: ([[(float, float)]]) List of paths
+        '''
+        paths = []
+        for _ in range(num_paths):
+            path = [self.start]
+            for _ in range(10):  # Assume each path has 10 waypoints
+                # Generate a random waypoint near the previous one
+                next_point = (path[-1][0] + np.random.uniform(-1, 1), 
+                              path[-1][1] + np.random.uniform(-1, 1))
+                path.append(next_point)
+            path.append(self.goal)
+            paths.append(path)
+        return paths
+
+def evaluate_paths_in_parallel(paths, path_planner):
+    '''
+    Evaluate the paths in parallel using the path planner.
+    
+    :param paths: ([[(float, float)]]) List of paths
+    :param path_planner: (PathPlanner) Path planner object
+    
+    :return: ([float]) List of costs for each path
+    '''
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results = list(executor.map(path_planner.evaluate_path, paths))
+    return results
+
 def main():
     latitude_distance_to_latitude = pd.read_csv('latitude_distance_to_latitude.csv')
     longitude_distance_to_longitude = pd.read_csv('longitude_distance_to_longitude.csv')
@@ -332,8 +388,8 @@ def main():
                   [0, 1, 0, 0]])  
     Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2 # Process noise covariance
     R = np.diag([noise_std_X, noise_std_Y]) ** 2 # Measurement noise covariance
-    x_est = np.zeros(4)  # Initial state estimate [x, y, v_x, v_y]
-    P_est = np.eye(4)    # Initial estimate covariance
+    x_est = np.zeros(4) # Initial state estimate [x, y, v_x, v_y]
+    P_est = np.eye(4)   # Initial estimate covariance
 
     # Apply EKF to the data
     filtered_data = []
