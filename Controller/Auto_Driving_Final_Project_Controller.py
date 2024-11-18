@@ -332,6 +332,22 @@ def main():
     )
     test_data_final = test_data_final.iloc[15:]
 
+    # Add noise to the GPS data
+    #test_data_final['Local_X'] += np.random.normal(0, 0.1, len(test_data_final))
+    #test_data_final['Local_Y'] += np.random.normal(0, 0.1, len(test_data_final))
+
+    # Smooth the Local_X and Local_Y data
+    smoothed_X = savgol_filter(test_data_final['Local_X'], window_length=11, polyorder=2)
+    smoothed_Y = savgol_filter(test_data_final['Local_Y'], window_length=11, polyorder=2)
+
+    # Estimate the measurement noise by subtracting the smoothed signal from the noisy data
+    noise_X = test_data_final['Local_X'] - smoothed_X
+    noise_Y = test_data_final['Local_Y'] - smoothed_Y
+
+    # Calculate the standard deviation of the noise
+    noise_std_X = 5 * np.std(noise_X)
+    noise_std_Y = 5 * np.std(noise_Y)
+
     # Extended Kalman Filter for GPS data
     def ekf_predict(x_est, P_est, F, Q):
         '''
@@ -376,7 +392,7 @@ def main():
     H = np.array([[1, 0, 0, 0],  # Observation matrix
                   [0, 1, 0, 0]])  
     Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2 # Process noise covariance
-    R = np.diag([0.75, 0.75]) ** 2         # Measurement noise covariance (GPS measurement noise)
+    R = np.diag([noise_std_X, noise_std_Y]) ** 2 # Measurement noise covariance
     x_est = np.zeros(4)  # Initial state estimate [x, y, v_x, v_y]
     P_est = np.eye(4)    # Initial estimate covariance
 
