@@ -152,11 +152,10 @@ def normalize_angle(angle):
     '''
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
-# PID controller with Anti-Windup
 @njit(cache=True)
 def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=False):
     '''
-    PID controller with Anti-Windup and smoother deceleration
+    PID controller with Anti-Windup, low-pass filtering, and smoother deceleration
 
     :param target: (float) Target value
     :param current: (float) Current value
@@ -166,35 +165,38 @@ def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=F
 
     :return: (float) Output value, Error, Integral term
     '''
+    # PID constants (tuned for smoother response)
+    Kp_mod = Kp * (0.8 if is_decelerating else 1.0)  # Reduce proportional gain during deceleration
+    Kd_mod = Kd * (0.3 if is_decelerating else 1.0)  # Reduce derivative gain during deceleration
+
+    # Error calculation
     error = target - current
-    p_term = Kp * error
     integral += error * dt
 
-    # Smooth deceleration by reducing the effect of the derivative term
-    if is_decelerating:
-        integral = min(max(integral, -output_limit / Ki), output_limit / Ki)  # Clamp the integral term
-        d_term = Kd * (error - prev_error) / (3 * dt)  # Reduce derivative effect by 1/3
+    # Anti-windup: Clamp the integral term to prevent overshooting
+    integral = min(max(integral, -output_limit / Ki), output_limit / Ki)
 
-        # Lower the proportional term to avoid overshooting
-        if error < 0:
-            p_term = 0.5 * p_term
-        else:
-            p_term = 1.5 * p_term
-    else:
-        d_term = Kd * (error - prev_error) / dt
-
+    # Compute PID terms
+    p_term = Kp_mod * error
+    d_term = Kd_mod * (error - prev_error) / dt
     i_term = Ki * integral
-    output = p_term + i_term + d_term
 
-    # Anti-Windup
-    if output > output_limit:
-        output = output_limit
+    # Calculate raw output
+    raw_output = p_term + i_term + d_term
+
+    # Low-pass filter on the output (for smoother acceleration/deceleration)
+    alpha = 0.35  # Smoothing factor (0 < alpha < 1, higher is less smoothing)
+    smoothed_output = alpha * raw_output + (1 - alpha) * prev_error  # Using `prev_error` to store last output
+
+    # Apply anti-windup on the smoothed output
+    if smoothed_output > output_limit:
+        smoothed_output = output_limit
         integral -= error * dt
-    elif output < -output_limit:
-        output = -output_limit
+    elif smoothed_output < -output_limit:
+        smoothed_output = -output_limit
         integral -= error * dt
 
-    return output, error, integral
+    return smoothed_output, error, integral
 
 # Stanley control function
 def stanley_control(state, cx, cy, cyaw, last_target_idx):
@@ -482,40 +484,42 @@ def main():
     # Simulation loop with end condition for a single complete path loop
     i = 0
     while target_idx < len(cx) - 1:
-        is_decelerating = state.v > target_speed
-        ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral, is_decelerating)
-        prev_error, integral = new_error, new_integral
-        di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx) 
+        # Update in 1 second blocks due to acutator delay
+        for _ in range(int(1 / dt)):
+            is_decelerating = state.v > target_speed
+            ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral, is_decelerating)
+            prev_error, integral = new_error, new_integral
+            di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
 
-        # Adjust target speed based on the turning angle
-        angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
-        if angle_diff > np.radians(5):  # Slow down if the turning angle is greater than 5 degrees
-            target_speed = max(TARGET_SPEED_MPS * 0.45, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
-        else:
-            target_speed = TARGET_SPEED_MPS
+            # Adjust target speed based on the turning angle
+            angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
+            if angle_diff > np.radians(5):  # Slow down if the turning angle is greater than 5 degrees
+                target_speed = max(TARGET_SPEED_MPS * 0.45, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
+            else:
+                target_speed = TARGET_SPEED_MPS
 
-        # Update loop variables
-        state.update(ai, di) # Update the state of the vehicle
-        time += dt           # Update the time
-        i += 1               # Update the step count
+            # Update loop variables
+            state.update(ai, di)  # Update the state of the vehicle
+            time += dt            # Update the time
+            i += 1                # Update the step count
 
-        # Extend history arrays if needed
-        if i >= len(x_history):
-            x_history = np.append(x_history, np.zeros(100))
-            y_history = np.append(y_history, np.zeros(100))
-            yaw_history = np.append(yaw_history, np.zeros(100))
-            v_history = np.append(v_history, np.zeros(100))
-            t_history = np.append(t_history, np.zeros(100))
+            # Extend history arrays if needed
+            if i >= len(x_history):
+                x_history = np.append(x_history, np.zeros(100))
+                y_history = np.append(y_history, np.zeros(100))
+                yaw_history = np.append(yaw_history, np.zeros(100))
+                v_history = np.append(v_history, np.zeros(100))
+                t_history = np.append(t_history, np.zeros(100))
 
-        # Store the state in the history
-        x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
+            # Store the state in the history
+            x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
 
-        # Update the visualization
-        if show_animation:
-            line_trajectory.set_data(x_history[:i+1], y_history[:i+1])
-            point_target.set_data([cx[target_idx]], [cy[target_idx]])
-            plt.title(f"Speed [km/h]: {state.v * 3.6:.2f}")
-            plt.pause(0.001)
+            # Update the visualization
+            if show_animation:
+                line_trajectory.set_data(x_history[:i+1], y_history[:i+1])
+                point_target.set_data([cx[target_idx]], [cy[target_idx]])
+                plt.title(f"Speed [km/h]: {state.v * 3.6:.2f}")
+                plt.pause(0.001)
 
     # Truncate the arrays
     x_history = x_history[:i+1]
@@ -566,9 +570,9 @@ def main():
 
         # Speed vs Time
         ax4 = plt.subplot(gs[1, 2])
-        ax4.plot(t_history, v_history * kilo / hour, "-r")
+        ax4.plot(t_history, v_history * (hour / mile), "-r")
         ax4.set_xlabel("Time [s]")
-        ax4.set_ylabel("Speed [km/h]")
+        ax4.set_ylabel("Speed [mph]")
         ax4.set_title("Speed vs Time")
 
         plt.tight_layout()
