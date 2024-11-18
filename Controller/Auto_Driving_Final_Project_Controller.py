@@ -333,8 +333,8 @@ def main():
     test_data_final = test_data_final.iloc[15:]
 
     # Add noise to the GPS data
-    #test_data_final['Local_X'] += np.random.normal(0, 0.1, len(test_data_final))
-    #test_data_final['Local_Y'] += np.random.normal(0, 0.1, len(test_data_final))
+    # test_data_final['Local_X'] += np.random.normal(0, 0.1, len(test_data_final))
+    # test_data_final['Local_Y'] += np.random.normal(0, 0.1, len(test_data_final))
 
     # Smooth the Local_X and Local_Y data
     smoothed_X = savgol_filter(test_data_final['Local_X'], window_length=11, polyorder=2)
