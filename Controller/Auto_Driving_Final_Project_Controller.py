@@ -37,6 +37,7 @@ from numba import njit, float64
 from numba.experimental import jitclass
 import cubic_spline_planner
 import concurrent.futures
+import matplotlib.gridspec as gridspec
 
 # Gain Parameters
 k  = 0.02  # Stanley control gain
@@ -265,64 +266,6 @@ def convert_to_local_x_y(test_data, lat_table, lon_table):
 
     return longitude_meters, latitude_meters
 
-# Define a hypothetical path planner class
-class PathPlanner:
-    def __init__(self, start, goal, obstacles):
-        self.start = start
-        self.goal = goal
-        self.obstacles = obstacles
-
-    def evaluate_path(self, path):
-        '''
-        Calculate the cost of a path considering distance, obstacles, and smoothness
-
-        :param path: ([(float, float)]) List of waypoints
-
-        :return: (float) Total cost of the path
-        '''
-        distance_cost = np.linalg.norm(np.array(path[-1]) - np.array(self.goal))
-        obstacle_cost = sum([1 / np.linalg.norm(np.array(path_point) - np.array(obstacle)) 
-                             for path_point in path for obstacle in self.obstacles if np.linalg.norm(np.array(path_point) - np.array(obstacle)) < 1])
-        smoothness_cost = sum([np.linalg.norm(np.array(path[i+1]) - 2 * np.array(path[i]) + np.array(path[i-1])) 
-                               for i in range(1, len(path) - 1)])
-
-        # Total cost is a weighted sum of distance, obstacle proximity, and smoothness
-        total_cost = distance_cost + 10 * obstacle_cost + 5 * smoothness_cost
-        return total_cost
-
-    def generate_candidate_paths(self, num_paths=10):
-        '''
-        Generate candidate paths (random paths for simplicity)
-        
-        :param num_paths: (int) Number of paths to generate
-        
-        :return: ([[(float, float)]]) List of paths
-        '''
-        paths = []
-        for _ in range(num_paths):
-            path = [self.start]
-            for _ in range(10):  # Assume each path has 10 waypoints
-                # Generate a random waypoint near the previous one
-                next_point = (path[-1][0] + np.random.uniform(-1, 1), 
-                              path[-1][1] + np.random.uniform(-1, 1))
-                path.append(next_point)
-            path.append(self.goal)
-            paths.append(path)
-        return paths
-
-def evaluate_paths_in_parallel(paths, path_planner):
-    '''
-    Evaluate the paths in parallel using the path planner.
-    
-    :param paths: ([[(float, float)]]) List of paths
-    :param path_planner: (PathPlanner) Path planner object
-    
-    :return: ([float]) List of costs for each path
-    '''
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        results = list(executor.map(path_planner.evaluate_path, paths))
-    return results
-
 def main():
     latitude_distance_to_latitude = pd.read_csv('latitude_distance_to_latitude.csv')
     longitude_distance_to_longitude = pd.read_csv('longitude_distance_to_longitude.csv')
@@ -331,10 +274,6 @@ def main():
         test_data_final, latitude_distance_to_latitude, longitude_distance_to_longitude
     )
     test_data_final = test_data_final.iloc[15:]
-
-    # Add noise to the GPS data
-    # test_data_final['Local_X'] += np.random.normal(0, 0.1, len(test_data_final))
-    # test_data_final['Local_Y'] += np.random.normal(0, 0.1, len(test_data_final))
 
     # Smooth the Local_X and Local_Y data
     smoothed_X = savgol_filter(test_data_final['Local_X'], window_length=11, polyorder=2)
@@ -506,8 +445,11 @@ def main():
 
         # Extend history arrays if needed
         if i >= len(x_history):
-            x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: np.append(arr, np.zeros(100)),
-                                                                        [x_history, y_history, yaw_history, v_history, t_history])
+            x_history = np.append(x_history, np.zeros(100))
+            y_history = np.append(y_history, np.zeros(100))
+            yaw_history = np.append(yaw_history, np.zeros(100))
+            v_history = np.append(v_history, np.zeros(100))
+            t_history = np.append(t_history, np.zeros(100))
 
         # Store the state in the history
         x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
@@ -520,31 +462,59 @@ def main():
             plt.pause(0.001)
 
     # Truncate the arrays
-    x_history, y_history, yaw_history, v_history, t_history = map(lambda arr: arr[:i+1],
-                                                                [x_history, y_history, yaw_history, v_history, t_history])
+    x_history = x_history[:i+1]
+    y_history = y_history[:i+1]
+    yaw_history = yaw_history[:i+1]
+    v_history = v_history[:i+1]
+    t_history = t_history[:i+1]
 
     # Print the simulation results
     print("Goal reached!" if target_idx >= len(cx) - 1 else "Goal not reached within the simulation time.")
 
     if show_animation:
-        plt.figure(figsize=(10, 5))
+        plt.figure(figsize=(15, 8))
+        gs = gridspec.GridSpec(2, 3, width_ratios=[2, 1, 1])
 
-        plt.subplot(1, 2, 1)
-        plt.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
-        plt.scatter(cx[-1], cy[-1], marker='<', color='k', s=size, label='End')
-        plt.plot(cx, cy, "r", label="Course")
-        plt.plot(x_history, y_history, "-b", label="Trajectory")
-        plt.xlabel("X [m]")
-        plt.ylabel("Y [m]")
-        plt.title("Path Tracking")
-        plt.axis("equal")
-        plt.legend()
+        # Path Following plot
+        ax0 = plt.subplot(gs[:, 0])  # Span both rows
+        ax0.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
+        ax0.scatter(cx[-1], cy[-1], marker='<', color='k', s=size, label='End')
+        ax0.plot(cx, cy, "r", label="Course")
+        ax0.plot(x_history, y_history, "-b", label="Trajectory")
+        ax0.set_xlabel("X [m]")
+        ax0.set_ylabel("Y [m]")
+        ax0.set_title("Path Tracking")
+        ax0.axis("equal")
+        ax0.legend()
 
-        plt.subplot(1, 2, 2)
-        plt.plot(t_history, v_history * kilo / hour, "-r")
-        plt.xlabel("Time [s]")
-        plt.ylabel("Speed [km/h]")
-        plt.title("Speed Profile")
+        # X-Coordinate vs Time
+        ax1 = plt.subplot(gs[0, 1])
+        ax1.plot(t_history, x_history, "-b")
+        ax1.set_xlabel("Time [s]")
+        ax1.set_ylabel("X [m]")
+        ax1.set_title("X-Coordinate vs Time")
+
+        # Y-Coordinate vs Time
+        ax2 = plt.subplot(gs[0, 2])
+        ax2.plot(t_history, y_history, "-g")
+        ax2.set_xlabel("Time [s]")
+        ax2.set_ylabel("Y [m]")
+        ax2.set_title("Y-Coordinate vs Time")
+
+        # Yaw vs Time
+        ax3 = plt.subplot(gs[1, 1])
+        ax3.plot(t_history, np.degrees(yaw_history), "-k")
+        ax3.set_xlabel("Time [s]")
+        ax3.set_ylabel("Yaw [deg]")
+        ax3.set_title("Yaw vs Time")
+
+        # Speed vs Time
+        ax4 = plt.subplot(gs[1, 2])
+        ax4.plot(t_history, v_history * kilo / hour, "-r")
+        ax4.set_xlabel("Time [s]")
+        ax4.set_ylabel("Speed [km/h]")
+        ax4.set_title("Speed vs Time")
+
         plt.tight_layout()
         plt.show()
 
