@@ -29,18 +29,18 @@ Time, Longitude, Latitude, Speed[mps], Brake_status
 # Importing Required Libraries
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import pandas as pd
 from scipy.interpolate import interp1d
-from scipy.constants import mile, kilo, hour
+from scipy.constants import mile, hour
 from scipy.signal import savgol_filter
 from numba import njit, float64
 from numba.experimental import jitclass
-import cubic_spline_planner
 import concurrent.futures
-import matplotlib.gridspec as gridspec
+import cubic_spline_planner
 
 # Gain Parameters
-k  = 0.02  # Stanley control gain
+k  = 0.022 # Stanley control gain
 Kp = 0.8   # PID control gain: P
 Ki = 0.005 # PID control gain: I
 Kd = 0.6   # PID control gain: D
@@ -68,13 +68,13 @@ battery   = 24                   # Battery capacity of 2014 Nissan Leaf (kWh)
 max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf (radians)
 
 # Output Limit for Anti-Windup
-output_limit = 3.8873 # Acceleration limit of 2014 Nissan Leaf (m/s^2)
+output_limit = 3.8873 # Acceleration limit (m/s^2)
 
 # Set to True to show the animation
 show_animation = True
 
 # Target speed in mph to m/s
-TARGET_SPEED_MPH = 5 # (mph)
+TARGET_SPEED_MPH = 10 # (mph)
 TARGET_SPEED_MPS = TARGET_SPEED_MPH * mile / hour # (m/s)
 
 # Define the state specification
@@ -119,9 +119,9 @@ class State:
         delta = min(max(delta, -max_steer), max_steer)
 
         # Compute resistance forces
-        F_drag = 0.5 * rho * C_d * A * self.v**2 # Aerodynamic drag force
-        F_rolling = m * g * f_roll               # Rolling resistance force
-        F_resistance = F_drag + F_rolling        # Total resistance force
+        F_drag = 0.5 * rho * C_d * A * self.v ** 2 # Aerodynamic drag force
+        F_rolling = m * g * f_roll                 # Rolling resistance force
+        F_resistance = F_drag + F_rolling          # Total resistance force
 
         # Compute net acceleration
         a_net = acceleration - F_resistance / m
@@ -153,7 +153,7 @@ def normalize_angle(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
 @njit(cache=True)
-def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=False):
+def pid_control(target, current, prev_error, integral, is_decelerating):
     '''
     PID controller with Anti-Windup, low-pass filtering, and smoother deceleration
 
@@ -167,7 +167,7 @@ def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=F
     '''
     # PID constants (tuned for smoother response)
     Kp_mod = Kp * (0.8 if is_decelerating else 1.0)  # Reduce proportional gain during deceleration
-    Kd_mod = Kd * (0.3 if is_decelerating else 1.0)  # Reduce derivative gain during deceleration
+    Kd_mod = Kd * (0.25 if is_decelerating else 1.0) # Reduce derivative gain during deceleration
 
     # Error calculation
     error = target - current
@@ -185,8 +185,8 @@ def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=F
     raw_output = p_term + i_term + d_term
 
     # Low-pass filter on the output (for smoother acceleration/deceleration)
-    alpha = 0.35  # Smoothing factor (0 < alpha < 1, higher is less smoothing)
-    smoothed_output = alpha * raw_output + (1 - alpha) * prev_error  # Using `prev_error` to store last output
+    alpha = 0.15  # Smoothing factor (0 < alpha < 1, higher is less smoothing)
+    smoothed_output = alpha * raw_output + (1 - alpha) * prev_error
 
     # Apply anti-windup on the smoothed output
     if smoothed_output > output_limit:
@@ -199,51 +199,65 @@ def pid_control(target, current, prev_error=0.0, integral=0.0, is_decelerating=F
     return smoothed_output, error, integral
 
 # Stanley control function
+@njit(cache=True)
 def stanley_control(state, cx, cy, cyaw, last_target_idx):
     '''
     Stanley steering control.
 
     :param state: (State object)
-    :param cx: ([float])
-    :param cy: ([float])
-    :param cyaw: ([float])
+    :param cx: (np.ndarray)
+    :param cy: (np.ndarray)
+    :param cyaw: (np.ndarray)
     :param last_target_idx: (int)
 
     :return: (float, int)
     '''
     epsilon = 1e-5
     current_target_idx, error_front_axle = calc_target_index(state, cx, cy, last_target_idx)
-    current_target_idx = max(last_target_idx, current_target_idx)
-    theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw) # Heading error
-    theta_d = np.arctan2(k * error_front_axle, state.v + epsilon)   # Cross track error
+    if current_target_idx < last_target_idx:
+        current_target_idx = last_target_idx
+    theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw)  # Heading error
+    theta_d = np.arctan2(k * error_front_axle, state.v + epsilon)    # Cross track error
     delta = theta_e + theta_d
 
     return delta, current_target_idx
 
 # Function to calculate the target index
+@njit(cache=True)
 def calc_target_index(state, cx, cy, last_target_idx):
     '''
     Calculate the target index for the vehicle to follow the path.
 
     :param state: (State) State of the vehicle
-    :param cx: ([float]) x-coordinates of the path
-    :param cy: ([float]) y-coordinates of the path
+    :param cx: (np.ndarray) x-coordinates of the path
+    :param cy: (np.ndarray) y-coordinates of the path
     :param last_target_idx: (int) Last target index
 
     :return: (int, float) Target index, Error at the front axle
     '''
-    fx, fy = state.x + L * np.cos(state.yaw), state.y + L * np.sin(state.yaw)
-    dx, dy = cx[last_target_idx:] - fx, cy[last_target_idx:] - fy
+    fx = state.x + L * np.cos(state.yaw)
+    fy = state.y + L * np.sin(state.yaw)
+
+    dx = cx[last_target_idx:] - fx
+    dy = cy[last_target_idx:] - fy
     d = np.hypot(dx, dy)
-    target_idx = np.argmin(d) + last_target_idx
+    target_idx_rel = np.argmin(d)
+    target_idx = target_idx_rel + last_target_idx
+
     look_ahead_distance = k * state.v + 1.0
 
-    # Check if the target index is out of bounds
-    while target_idx + 1 < len(cx) and np.hypot(cx[target_idx + 1] - fx, cy[target_idx + 1] - fy) <= look_ahead_distance:
+    while True:
+        if target_idx + 1 >= len(cx):
+            break
+        dx = cx[target_idx + 1] - fx
+        dy = cy[target_idx + 1] - fy
+        dist = np.hypot(dx, dy)
+        if dist > look_ahead_distance:
+            break
         target_idx += 1
 
     front_axle_vec = np.array([-np.cos(state.yaw + np.pi / 2), -np.sin(state.yaw + np.pi / 2)])
-    error_front_axle = np.dot([fx - cx[target_idx], fy - cy[target_idx]], front_axle_vec)
+    error_front_axle = np.dot(np.array([fx - cx[target_idx], fy - cy[target_idx]]), front_axle_vec)
 
     return target_idx, error_front_axle
 
@@ -267,6 +281,71 @@ def convert_to_local_x_y(test_data, lat_table, lon_table):
     longitude_meters = (test_data['Longitude'].values - test_data['Longitude'].values[0]) * longitude_meters_per_degree
 
     return longitude_meters, latitude_meters
+
+# Extended Kalman Filter for GPS data
+@njit(cache=True)
+def ekf_predict(x_est, P_est, F, Q):
+    '''
+    EKF Prediction step.
+
+    :param x_est: (np.array) State estimate
+    :param P_est: (np.array) Estimate covariance
+    :param F: (np.array) State transition matrix
+    :param Q: (np.array) Process noise covariance
+
+    :return: (np.array, np.array) Predicted state estimate, Predicted estimate covariance
+    '''
+    x_pred = F @ x_est           # State prediction
+    P_pred = F @ P_est @ F.T + Q  # Covariance prediction
+    return x_pred, P_pred
+
+@njit(cache=True)
+def ekf_update(x_pred, P_pred, z, H, R):
+    '''
+    EKF Update step.
+
+    :param x_pred: (np.array) Predicted state estimate
+    :param P_pred: (np.array) Predicted estimate covariance
+    :param z: (np.array) Measurement
+    :param H: (np.array) Observation matrix
+    :param R: (np.array) Measurement noise covariance
+
+    :return: (np.array, np.array) Updated state estimate, Updated estimate covariance
+    '''
+    y = z - H @ x_pred                        # Measurement residual
+    S = H @ P_pred @ H.T + R                  # Residual covariance
+    K = P_pred @ H.T @ np.linalg.inv(S)       # Kalman gain
+    x_est = x_pred + K @ y                    # State update
+    P_est = (np.eye(len(K)) - K @ H) @ P_pred  # Covariance update
+    return x_est, P_est
+
+@njit(cache=True)
+def run_ekf(local_x, local_y, F, H, Q, R, x_est, P_est):
+    '''
+    Run the Extended Kalman Filter over the data.
+
+    :param local_x: (np.array) Local X positions
+    :param local_y: (np.array) Local Y positions
+    :param F: (np.array) State transition matrix
+    :param H: (np.array) Observation matrix
+    :param Q: (np.array) Process noise covariance
+    :param R: (np.array) Measurement noise covariance
+    :param x_est: (np.array) Initial state estimate
+    :param P_est: (np.array) Initial estimate covariance
+
+    :return: (np.array) Filtered data
+    '''
+    n = len(local_x)
+    filtered_data = np.zeros((n, 2))
+    for i in range(n):
+        z = np.array([local_x[i], local_y[i]])
+        if i > 0:
+            x_pred, P_pred = ekf_predict(x_est, P_est, F, Q)
+        else:
+            x_pred, P_pred = x_est, P_est
+        x_est, P_est = ekf_update(x_pred, P_pred, z, H, R)
+        filtered_data[i, :] = x_est[:2]
+    return filtered_data
 
 # Define a hypothetical path planner class
 class PathPlanner:
@@ -331,7 +410,7 @@ def main():
     test_data_final['Local_X'], test_data_final['Local_Y'] = convert_to_local_x_y(
         test_data_final, latitude_distance_to_latitude, longitude_distance_to_longitude
     )
-    test_data_final = test_data_final.iloc[15:]
+    test_data_final = test_data_final.iloc[15:].reset_index(drop=True)
 
     # Smooth the Local_X and Local_Y data
     smoothed_X = savgol_filter(test_data_final['Local_X'], window_length=11, polyorder=2)
@@ -345,71 +424,24 @@ def main():
     noise_std_X = 5 * np.std(noise_X)
     noise_std_Y = 5 * np.std(noise_Y)
 
-    # Extended Kalman Filter for GPS data
-    def ekf_predict(x_est, P_est, F, Q):
-        '''
-        EKF Prediction step.
-
-        :param x_est: (np.array) State estimate
-        :param P_est: (np.array) Estimate covariance
-        :param F: (np.array) State transition matrix
-        :param Q: (np.array) Process noise covariance
-
-        :return: (np.array, np.array) Predicted state estimate, Predicted estimate covariance
-        '''
-        x_pred = F @ x_est           # State prediction
-        P_pred = F @ P_est @ F.T + Q # Covariance prediction
-        return x_pred, P_pred
-
-    def ekf_update(x_pred, P_pred, z, H, R):
-        '''
-        EKF Update step.
-
-        :param x_pred: (np.array) Predicted state estimate
-        :param P_pred: (np.array) Predicted estimate covariance
-        :param z: (np.array) Measurement
-        :param H: (np.array) Observation matrix
-        :param R: (np.array) Measurement noise covariance
-
-        :return: (np.array, np.array) Updated state estimate, Updated estimate covariance
-        '''
-        y = z - H @ x_pred                        # Measurement residual
-        S = H @ P_pred @ H.T + R                  # Residual covariance
-        K = P_pred @ H.T @ np.linalg.inv(S)       # Kalman gain
-        x_est = x_pred + K @ y                    # State update
-        P_est = (np.eye(len(K)) - K @ H) @ P_pred # Covariance update
-        return x_est, P_est
-
     # Initialize EKF parameters
-    dt = 0.1  # Time step
-    F = np.array([[1, 0, dt, 0], # State transition matrix
+    F = np.array([[1, 0, dt, 0],   # State transition matrix
                   [0, 1, 0, dt],
                   [0, 0, 1, 0],
-                  [0, 0, 0, 1]])  
-    H = np.array([[1, 0, 0, 0],  # Observation matrix
-                  [0, 1, 0, 0]])  
-    Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2 # Process noise covariance
-    R = np.diag([noise_std_X, noise_std_Y]) ** 2 # Measurement noise covariance
-    x_est = np.zeros(4) # Initial state estimate [x, y, v_x, v_y]
-    P_est = np.eye(4)   # Initial estimate covariance
+                  [0, 0, 0, 1]], dtype=np.float64)
+    H = np.array([[1, 0, 0, 0],    # Observation matrix
+                  [0, 1, 0, 0]], dtype=np.float64)
+    Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2  # Process noise covariance
+    R = np.diag([noise_std_X, noise_std_Y]) ** 2  # Measurement noise covariance
+    x_est = np.zeros(4, dtype=np.float64)  # Initial state estimate [x, y, v_x, v_y]
+    P_est = np.eye(4, dtype=np.float64)    # Initial estimate covariance
+
+    # Extract data into numpy arrays
+    local_x = test_data_final['Local_X'].values.astype(np.float64)
+    local_y = test_data_final['Local_Y'].values.astype(np.float64)
 
     # Apply EKF to the data
-    filtered_data = []
-    for i in range(len(test_data_final)):
-        z = np.array([test_data_final['Local_X'].iloc[i], test_data_final['Local_Y'].iloc[i]])
-
-        # If not the first measurement, perform prediction
-        if i > 0:
-            x_pred, P_pred = ekf_predict(x_est, P_est, F, Q)
-        else:
-            x_pred, P_pred = x_est, P_est
-
-        # Perform update
-        x_est, P_est = ekf_update(x_pred, P_pred, z, H, R)
-        filtered_data.append(x_est[:2])
-
-    # Convert the filtered data to a numpy array
-    filtered_data = np.array(filtered_data)
+    filtered_data = run_ekf(local_x, local_y, F, H, Q, R, x_est, P_est)
 
     # Smooth the filtered data with Savitzky-Golay filter
     filtered_data[:, 0] = savgol_filter(filtered_data[:, 0], window_length=11, polyorder=2)
@@ -420,20 +452,21 @@ def main():
     test_data_final['Filtered_Y'] = filtered_data[:, 1]
 
     # Plot the GPS trajectory
-    plt.figure(figsize=(8, 8))
-    size = 100
-    plt.scatter(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='b', s=10)
-    plt.plot(test_data_final['Filtered_X'], test_data_final['Filtered_Y'], label='Filtered Trajectory', color='r')
-    plt.scatter(test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0], marker='*',
-                 color='g', s=size, label='Start')
-    plt.scatter(test_data_final['Local_X'].iloc[-1], test_data_final['Local_Y'].iloc[-1], marker='<',
-                 color='k', s=size, label='End')
-    plt.xlabel('Local X (m)')
-    plt.ylabel('Local Y (m)')
-    plt.title('Local X and Y Trajectory')
-    plt.axis('equal')
-    plt.legend()
-    plt.show()
+    if show_animation:
+        plt.figure(figsize=(8, 8))
+        size = 100
+        plt.scatter(test_data_final['Local_X'], test_data_final['Local_Y'], label='GPS Trajectory', color='b', s=10)
+        plt.plot(test_data_final['Filtered_X'], test_data_final['Filtered_Y'], label='Filtered Trajectory', color='r')
+        plt.scatter(test_data_final['Local_X'].iloc[0], test_data_final['Local_Y'].iloc[0], marker='*',
+                    color='g', s=size, label='Start')
+        plt.scatter(test_data_final['Local_X'].iloc[-1], test_data_final['Local_Y'].iloc[-1], marker='<',
+                    color='k', s=size, label='End')
+        plt.xlabel('Local X (m)')
+        plt.ylabel('Local Y (m)')
+        plt.title('Local X and Y Trajectory')
+        plt.axis('equal')
+        plt.legend()
+        plt.show()
 
     # Cubic Spline Path Planning
     cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
@@ -450,13 +483,20 @@ def main():
     initial_yaw = np.arctan2(dy_init, dx_init)
     state = State(float(initial_x), float(initial_y), float(initial_yaw), 0.0)
 
-    # Set cx, cy, cyaw, and ck as arrays generated from cubic spline planner
-    cx, cy, cyaw, ck = map(np.array, [cx, cy, cyaw, ck])
+    # Set cx, cy, cyaw as numpy arrays
+    cx = np.array(cx, dtype=np.float64)
+    cy = np.array(cy, dtype=np.float64)
+    cyaw = np.array(cyaw, dtype=np.float64)
 
     # Simulation
     last_idx = len(cx) - 1
-    time, n_steps = 0.0, int(max_simulation_time / dt) + 1
-    x_history, y_history, yaw_history, v_history, t_history = [np.zeros(n_steps) for _ in range(5)]
+    n_steps = int(max_simulation_time / dt) + 1
+    x_history = np.zeros(n_steps)
+    y_history = np.zeros(n_steps)
+    yaw_history = np.zeros(n_steps)
+    v_history = np.zeros(n_steps)
+    t_history = np.zeros(n_steps)
+    time = 0.0
     x_history[0], y_history[0], yaw_history[0], v_history[0], t_history[0] = state.x, state.y, state.yaw, state.v, time
 
     # Ensure target_idx starts from the beginning
@@ -481,52 +521,44 @@ def main():
         plt.show(block=False)
         plt.pause(0.1)
 
-    # Simulation loop with end condition for a single complete path loop
     i = 0
-    while target_idx < len(cx) - 1:
-        # Update in 1 second blocks due to acutator delay
-        for _ in range(int(1 / dt)):
-            is_decelerating = state.v > target_speed
-            ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral, is_decelerating)
-            prev_error, integral = new_error, new_integral
-            di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
+    while target_idx < len(cx) - 1 and time <= max_simulation_time:
+        is_decelerating = state.v > target_speed
+        ai, new_error, new_integral = pid_control(target_speed, state.v, prev_error, integral, is_decelerating)
+        prev_error, integral = new_error, new_integral
+        di, target_idx = stanley_control(state, cx, cy, cyaw, target_idx)
 
-            # Adjust target speed based on the turning angle
-            angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
-            if angle_diff > np.radians(5):  # Slow down if the turning angle is greater than 5 degrees
-                target_speed = max(TARGET_SPEED_MPS * 0.45, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
-            else:
-                target_speed = TARGET_SPEED_MPS
+        # Adjust target speed based on the turning angle
+        angle_diff = abs(normalize_angle(cyaw[target_idx] - state.yaw))
+        if angle_diff > np.radians(5):  # Slow down if the turning angle is greater than 5 degrees
+            target_speed = max(TARGET_SPEED_MPS * 0.45, TARGET_SPEED_MPS * (1 - angle_diff / np.pi))
+        else:
+            target_speed = TARGET_SPEED_MPS
 
-            # Update loop variables
-            state.update(ai, di)  # Update the state of the vehicle
-            time += dt            # Update the time
-            i += 1                # Update the step count
+        # Update the state
+        state.update(ai, di)
+        time += dt
+        i += 1
 
-            # Extend history arrays if needed
-            if i >= len(x_history):
-                x_history = np.append(x_history, np.zeros(100))
-                y_history = np.append(y_history, np.zeros(100))
-                yaw_history = np.append(yaw_history, np.zeros(100))
-                v_history = np.append(v_history, np.zeros(100))
-                t_history = np.append(t_history, np.zeros(100))
-
-            # Store the state in the history
+        # Store the state in the history
+        if i < n_steps:
             x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
+        else:
+            break  # Prevent index out of bounds
 
-            # Update the visualization
-            if show_animation:
-                line_trajectory.set_data(x_history[:i+1], y_history[:i+1])
-                point_target.set_data([cx[target_idx]], [cy[target_idx]])
-                plt.title(f"Speed [km/h]: {state.v * 3.6:.2f}")
-                plt.pause(0.001)
+        # Update the visualization
+        if show_animation:
+            line_trajectory.set_data(x_history[:i + 1], y_history[:i + 1])
+            point_target.set_data([cx[target_idx]], [cy[target_idx]])
+            plt.title(f"Speed [km/h]: {state.v * 3.6:.2f}")
+            plt.pause(0.001)
 
     # Truncate the arrays
-    x_history = x_history[:i+1]
-    y_history = y_history[:i+1]
-    yaw_history = yaw_history[:i+1]
-    v_history = v_history[:i+1]
-    t_history = t_history[:i+1]
+    x_history = x_history[:i]
+    y_history = y_history[:i]
+    yaw_history = yaw_history[:i]
+    v_history = v_history[:i]
+    t_history = t_history[:i]
 
     # Print the simulation results
     print("Goal reached!" if target_idx >= len(cx) - 1 else "Goal not reached within the simulation time.")
@@ -544,6 +576,7 @@ def main():
         ax0.set_xlabel("X [m]")
         ax0.set_ylabel("Y [m]")
         ax0.set_title("Path Tracking")
+        ax0.set_facecolor('lightgray')
         ax0.axis("equal")
         ax0.legend()
 
@@ -579,4 +612,4 @@ def main():
         plt.show()
 
 if __name__ == '__main__':
-     main()
+    main()
