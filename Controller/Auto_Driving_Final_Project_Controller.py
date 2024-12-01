@@ -416,9 +416,9 @@ def update_vehicle_polygon(polygon, x, y, yaw):
     :param yaw: (float) yaw angle of the vehicle
     """
     # Vehicle parameters
-    W = 1.8   # Width of the vehicle (m)
-    LF = 3.0  # Distance from center to front end (m)
-    LB = 1.0  # Distance from center to back end (m)
+    W  = 1.77   # Width of the vehicle (m)
+    LF = 2.2225 # Distance from center to front end (m)
+    LB = 1.7775 # Distance from center to back end (m)
 
     # Vehicle outline in the vehicle coordinate system
     outline = np.array([
