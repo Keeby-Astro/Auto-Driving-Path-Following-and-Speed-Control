@@ -84,6 +84,8 @@ pip install numpy matplotlib pandas scipy numba
 
 ![Car_Data/Simulation - Lloyd Noble.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Simulation%20-%20Lloyd%20Noble.gif)
 
+![Car_Data/Simulation - Reaves Park.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Simulation%20-%20Reaves%20Park.gif)
+
 - **Speed Profile Plot:** Plots the speed of the vehicle over time, showing its adherence to the target speed.
 - **Additional Plots:**
   - X-Coordinate vs Time
