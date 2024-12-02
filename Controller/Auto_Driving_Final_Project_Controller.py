@@ -3,9 +3,9 @@
 
 '''
 --Problem Statement:
-Design a vehicle speed control and path following control to track the gps path below
+Design a vehicle speed control and path following control to track the GPS path below
 (Target speed is 5 [mph]; Original data is attached).
-Develop the controls in simulation using python for verification purpose.
+Develop the controls in simulation using Python for verification purposes.
 
 --Original Data is attached:
 Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv
@@ -31,6 +31,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import Polygon
+from matplotlib.animation import FuncAnimation, PillowWriter
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.constants import mile, hour
@@ -50,9 +51,9 @@ Kd = 0.6   # PID control gain: D
 dt     = 0.1   # Time step
 g      = 9.81  # Gravity constant (m/s^2)
 rho    = 1.293 # Air density (kg/m^3)
-F_xr   = 0     # Rolling resistance force (N)
 f_roll = 0.015 # Rolling resistance coefficient
-beta   = 0     # Road slope angle (radians) [Assumed to be 0]
+F_xr   = 217.3 # Rear tire longitudinal force
+beta   = 0.0   # Road slope angle (radians) [Assumed to be flat]
 
 # Real World Vehicle Parameters
 L         = 2.7                  # Wheelbase of 2014 Nissan Leaf (m)
@@ -71,8 +72,9 @@ max_steer = np.radians(31.30412) # Maximum steering angle of 2014 Nissan Leaf (r
 # Acceleration Output Limit for Anti-Windup
 output_limit = 3.8873 # (m/s^2)
 
-# Set to True to show the Animation
+# Set to True to show the Animation and save the Animation
 show_animation = True
+save_animation = False
 
 # Target Speed in mph to m/s
 TARGET_SPEED_MPH = 10 # (mph)
@@ -247,7 +249,7 @@ def calc_target_index(state, cx, cy, last_target_idx):
     target_idx_rel = np.argmin(d)
     target_idx = target_idx_rel + last_target_idx
 
-    look_ahead_distance = k * state.v + 0.1
+    look_ahead_distance = k * state.v + 0.05
 
     while True:
         if target_idx + 1 >= len(cx):
@@ -350,7 +352,7 @@ def run_ekf(local_x, local_y, F, H, Q, R, x_est, P_est):
         filtered_data[i, :] = x_est[:2]
     return filtered_data
 
-# Path Planner class
+# Path Planner class (Placeholder for future implementation)
 class PathPlanner:
     def __init__(self, start, goal, obstacles):
         self.start = start
@@ -363,43 +365,27 @@ class PathPlanner:
         :param path: ([(float, float)]) List of waypoints
         :return: (float) Total cost of the path
         '''
-        distance_cost = np.linalg.norm(np.array(path[-1]) - np.array(self.goal))
-        obstacle_cost = sum([1 / np.linalg.norm(np.array(path_point) - np.array(obstacle)) 
-                             for path_point in path for obstacle in self.obstacles if np.linalg.norm(np.array(path_point) - np.array(obstacle)) < 1])
-        smoothness_cost = sum([np.linalg.norm(np.array(path[i+1]) - 2 * np.array(path[i]) + np.array(path[i-1])) 
-                               for i in range(1, len(path) - 1)])
-
-        # Total cost is a weighted sum of distance, obstacle proximity, and smoothness
-        total_cost = distance_cost + 10 * obstacle_cost + 5 * smoothness_cost
-        return total_cost
+        # Placeholder implementation
+        return 0.0
 
     def generate_candidate_paths(self, num_paths=10):
         '''
         Generate candidate paths (random paths for simplicity)
-        
+
         :param num_paths: (int) Number of paths to generate
-        
+
         :return: ([[(float, float)]]) List of paths
         '''
-        paths = []
-        for _ in range(num_paths):
-            path = [self.start]
-            for _ in range(10):  # Assume each path has 10 waypoints
-                # Generate a random waypoint near the previous one
-                next_point = (path[-1][0] + np.random.uniform(-1, 1), 
-                              path[-1][1] + np.random.uniform(-1, 1))
-                path.append(next_point)
-            path.append(self.goal)
-            paths.append(path)
-        return paths
+        # Placeholder implementation
+        return []
 
 def evaluate_paths_in_parallel(paths, path_planner):
     '''
     Evaluate the paths in parallel using the path planner.
-    
+
     :param paths: ([[(float, float)]]) List of paths
     :param path_planner: (PathPlanner) Path planner object
-    
+
     :return: ([float]) List of costs for each path
     '''
     with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -416,9 +402,9 @@ def update_vehicle_polygon(polygon, x, y, yaw):
     :param yaw: (float) yaw angle of the vehicle
     """
     # Vehicle parameters
-    W  = 1.77   # Width of the vehicle (m)
-    LF = 2.2225 # Distance from center to front end (m)
-    LB = 1.7775 # Distance from center to back end (m)
+    W = 1.8   # Width of the vehicle (m)
+    LF = 3.0  # Distance from center to front end (m)
+    LB = 1.0  # Distance from center to back end (m)
 
     # Vehicle outline in the vehicle coordinate system
     outline = np.array([
@@ -469,11 +455,11 @@ def main():
     noise_std_Y = 5 * np.std(noise_Y)
 
     # Initialize EKF parameters
-    F = np.array([[1, 0, dt, 0],   
+    F = np.array([[1, 0, dt, 0],
                   [0, 1, 0, dt],
                   [0, 0, 1, 0],
                   [0, 0, 0, 1]], dtype=np.float64) # State transition matrix
-    H = np.array([[1, 0, 0, 0], 
+    H = np.array([[1, 0, 0, 0],
                   [0, 1, 0, 0]], dtype=np.float64) # Observation matrix
     Q = np.diag([0.5, 0.5, 1.0, 1.0]) ** 2         # Process noise covariance
     R = np.diag([noise_std_X, noise_std_Y]) ** 2   # Measurement noise covariance
@@ -540,6 +526,7 @@ def main():
     yaw_history = np.zeros(n_steps)
     v_history = np.zeros(n_steps)
     t_history = np.zeros(n_steps)
+    target_idx_history = np.zeros(n_steps, dtype=int)
     time = 0.0
     x_history[0], y_history[0], yaw_history[0], v_history[0], t_history[0] = state.x, state.y, state.yaw, state.v, time
 
@@ -548,26 +535,6 @@ def main():
     prev_error, integral = 0.0, 0.0
 
     # Simulation loop
-    if show_animation:
-        # Initial setting for visualization
-        fig, ax = plt.subplots(figsize=(8, 8))
-        line_course, = ax.plot(cx, cy, "r", label="Course")
-        line_trajectory, = ax.plot([], [], "-b", label="Trajectory")
-        point_target, = ax.plot([], [], "xg", label="Target")
-        ax.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
-        ax.scatter(cx[-1], cy[-1], marker='<', color='k', s=size, label='End')
-        ax.axis("equal")
-        ax.set_xlabel("X [m]")
-        ax.set_ylabel("Y [m]")
-        ax.set_title("Path Tracking")
-        # Create the vehicle polygon
-        vehicle_polygon = Polygon(np.zeros((4, 2)), closed=True, color='k', alpha=0.5)
-        ax.add_patch(vehicle_polygon)
-        ax.legend()
-        plt.tight_layout()
-        plt.show(block=False)
-        plt.pause(0.1)
-
     i = 0
     while target_idx < len(cx) - 1 and time <= max_simulation_time:
         is_decelerating = state.v > target_speed
@@ -585,21 +552,15 @@ def main():
         # Update the state
         state.update(ai, di)
         time += dt
-        i += 1
 
         # Store the state in the history
         if i < n_steps:
             x_history[i], y_history[i], yaw_history[i], v_history[i], t_history[i] = state.x, state.y, state.yaw, state.v, time
+            target_idx_history[i] = target_idx
         else:
             break  # Prevent index out of bounds
 
-        # Update the visualization
-        if show_animation:
-            line_trajectory.set_data(x_history[:i + 1], y_history[:i + 1])
-            point_target.set_data([cx[target_idx]], [cy[target_idx]])
-            update_vehicle_polygon(vehicle_polygon, state.x, state.y, state.yaw)
-            ax.set_title(f"Speed [km/h]: {state.v * 3.6:.2f}")
-            plt.pause(0.001)
+        i += 1
 
     # Truncate the arrays
     x_history = x_history[:i]
@@ -607,10 +568,50 @@ def main():
     yaw_history = yaw_history[:i]
     v_history = v_history[:i]
     t_history = t_history[:i]
+    target_idx_history = target_idx_history[:i]
 
     # Print the simulation results
     print("Goal reached!" if target_idx >= len(cx) - 1 else "Goal not reached within the simulation time.")
 
+    # Create the animation function
+    def animate(frame):
+        idx = frame % len(x_history)
+        line_trajectory.set_data(x_history[:idx + 1], y_history[:idx + 1])
+        point_target.set_data([cx[target_idx_history[idx]]], [cy[target_idx_history[idx]]])
+        update_vehicle_polygon(vehicle_polygon, x_history[idx], y_history[idx], yaw_history[idx])
+        ax.set_title(f"Speed [mph]: {v_history[idx] * (hour / mile):.2f}")
+        return line_trajectory, point_target, vehicle_polygon
+
+    if show_animation:
+        # Create the figure and axes
+        fig, ax = plt.subplots(figsize=(8, 8))
+        size = 100
+        line_course, = ax.plot(cx, cy, "r", label="Course")
+        line_trajectory, = ax.plot([], [], "-b", label="Trajectory")
+        point_target, = ax.plot([], [], "xg", label="Target")
+        ax.scatter(cx[0], cy[0], marker='*', color='g', s=size, label='Start')
+        ax.scatter(cx[-1], cy[-1], marker='<', color='k', s=size, label='End')
+        ax.axis("equal")
+        ax.set_xlabel("X [m]")
+        ax.set_ylabel("Y [m]")
+        ax.set_title("Path Tracking")
+        vehicle_polygon = Polygon(np.zeros((4, 2)), closed=True, color='k', alpha=0.5)
+        ax.add_patch(vehicle_polygon)
+        ax.legend()
+        plt.tight_layout()
+
+        # Create the animation
+        ani = FuncAnimation(
+            fig, animate, frames=len(x_history), interval=dt * 1000, blit=False
+        )
+
+        if save_animation:
+            # Save the animation as a GIF
+            ani.save("path_tracking_animation.gif", writer=PillowWriter(fps=60))
+
+        plt.show()
+
+    # Plotting results
     if show_animation:
         plt.figure(figsize=(15, 8))
         gs = gridspec.GridSpec(2, 3, width_ratios=[2, 1, 1])
