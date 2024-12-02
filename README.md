@@ -86,12 +86,12 @@ pip install numpy matplotlib pandas scipy numba
 
 ![Car_Data/Simulation - Reaves Park.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Simulation%20-%20Reaves%20Park.gif)
 
-- **Speed Profile Plot:** Plots the speed of the vehicle over time, showing its adherence to the target speed.
 - **Additional Plots:**
-  - X-Coordinate vs Time
-  - Y-Coordinate vs Time
-  - Yaw vs Time
- 
+
+![Results - Lloyd Noble.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Results%20-%20Lloyd%20Noble.png)
+
+![Results - Reaves Park.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Results%20-%20Reaves%20Park.png)
+
 ## Conclusion
 
 This project provides a comprehensive simulation of autonomous vehicle path tracking and speed control using Python. By integrating advanced control algorithms and data filtering techniques, it achieves a realistic and robust performance suitable for educational and research purposes.
