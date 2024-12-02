@@ -81,6 +81,8 @@ pip install numpy matplotlib pandas scipy numba
 
 ### Output Visualization
 - **Path Tracking Plot:** Displays the GPS path with start and end markers, and the vehicle's trajectory as it follows the path.
+
+![alt-text](Car_Data/Simulation - Lloyd Noble.gif)
 - **Speed Profile Plot:** Plots the speed of the vehicle over time, showing its adherence to the target speed.
 - **Additional Plots:**
   - X-Coordinate vs Time
