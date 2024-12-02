@@ -658,7 +658,8 @@ def main():
         ax4.set_title("Speed vs Time")
 
         plt.tight_layout()
+        plt.savefig("path_tracking_results1.png", dpi=600)
         plt.show()
-
+         
 if __name__ == '__main__':
     main()
