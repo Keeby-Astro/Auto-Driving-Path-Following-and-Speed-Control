@@ -658,7 +658,20 @@ def main():
         ax4.set_title("Speed vs Time")
 
         plt.tight_layout()
-        plt.savefig("path_tracking_results1.png", dpi=600)
+        if save_animation:
+            plt.savefig("path_tracking_results1.png", dpi=600)
+        plt.show()
+
+        # Plot velocity, acceleration, and jerk profiles over time on a single plot within the same plot window, all in mph, mph/s, and mph/s^2
+        plt.figure(figsize=(8, 8))
+        plt.plot(t_history, v_history * (hour / mile), "-r", label="Speed [mph]")
+        plt.plot(t_history, np.gradient(v_history, dt) * (hour / mile), "-b", label="Acceleration [mph/s]")
+        plt.plot(t_history, np.gradient(np.gradient(v_history, dt), dt) * (hour / mile), "-g", label="Jerk [mph/s^2]")
+        plt.xlabel("Time [s]")
+        plt.ylabel("Value")
+        plt.title("Velocity, Acceleration, and Jerk Profiles")
+        plt.legend()
+        plt.tight_layout()
         plt.show()
          
 if __name__ == '__main__':
