@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project involves designing a vehicle speed control and path-following control system to track a GPS-defined path for a simulated autonomous vehicle. The main objective is to track a predefined GPS path at a target speed of 5 mph, based on provided GPS data. The simulation is implemented in Python and includes enhanced vehicle dynamics models, sensor noise filtering using an Extended Kalman Filter, and path planning with cubic spline interpolation, along with real-time visualization.
+This project involves designing a vehicle speed control and path-following control system to track a GPS-defined path for a simulated autonomous vehicle. The main objective is to track a predefined GPS path at a target speed of 10 mph, based on provided GPS data of Lloyd Noble Center and Reaves Park. The simulation is implemented in the Python programming language. Features includes enhanced vehicle dynamics based off the 2014 Nissan Leaf, PID speed control, sensor noise filtering using an Extended Kalman Filter and Savitzky-Golay Filter, and path planning with 3rd Derivative Cubic Spline Interpolation.
 
 ### Key Objectives
 1. Vehicle Speed Control: Ensure the vehicle maintains the target speed using an enhanced PID controller with anti-windup, low-pass filtering, and smoother deceleration.
