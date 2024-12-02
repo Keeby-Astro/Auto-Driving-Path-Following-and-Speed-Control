@@ -72,24 +72,26 @@ pip install numpy matplotlib pandas scipy numba
 
 ## Running the Simulation
 
-1. Place `latitude_distance_to_latitude.csv`, `longitude_distance_to_longitude.csv`, and `Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv` in the same directory as the script.
+1. Place `latitude_distance_to_latitude.csv`, `longitude_distance_to_longitude.csv`, `Reaves_Park_acc_group_3_2024_11_22-15_49_50.csv`, and `Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv` in the same directory as the script.
 2. Run the script:
     ```bash
     python auto_driving_final_project_controller.py
     ```
 3. **Animation Mode:** If `show_animation` is set to `True`, a live plot of the vehicle’s path tracking and speed profile will be displayed.
 
+4. **Save Mode:** If `save_animation` is set to `True`, the vehicle’s path tracking and speed profile will be saved in a GIF file format.
+
 ### Output Visualization
-- **Path Tracking Plot:** Displays the GPS path with start and end markers, and the vehicle's trajectory as it follows the path.
+- **Path Tracking Animation:** Displays the GPS path with start and end markers, and the vehicle's trajectory as it follows the path.
 
 ![Car_Data/Simulation - Lloyd Noble.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Simulation%20-%20Lloyd%20Noble.gif)
 
 ![Car_Data/Simulation - Reaves Park.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Simulation%20-%20Reaves%20Park.gif)
 
-- **Additional Plots:**
-
+- **Lloyd Noble Plots:**
 ![Results - Lloyd Noble.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Results%20-%20Lloyd%20Noble.png)
 
+- **Reaves Park Plots:**
 ![Results - Reaves Park.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Results%20-%20Reaves%20Park.png)
 
 ## Conclusion
