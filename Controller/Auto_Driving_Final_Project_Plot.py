@@ -36,8 +36,20 @@ from scipy.optimize import minimize
 latitude_distance_to_latitude = pd.read_csv('latitude_distance_to_latitude.csv')
 longitude_distance_to_longitude = pd.read_csv('longitude_distance_to_longitude.csv')
 
-# Load the test data CSVs
-test_data_final = pd.read_csv('Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv') 
+# Ask the user to select the dataset
+dataset_choice = input("Type 1 for Lloyd Noble or type 2 for Reaves Park: ")
+
+if dataset_choice == '1':
+    test_data_final = pd.read_csv('Loyd_nobel_nav_rosbag2_2024_11_11-11_24_51.csv')
+    test_data_final = test_data_final.iloc[15:].reset_index(drop=True)
+elif dataset_choice == '2':
+    test_data_final = pd.read_csv('Reaves_Park_acc_group_3_2024_11_22-15_49_50.csv')
+    test_data_final = test_data_final.iloc[123:].reset_index(drop=True)
+else:
+    raise ValueError("Invalid input. Please type 1 or 2.")
+test_data_final['Local_X'], test_data_final['Local_Y'] = convert_to_local_x_y(
+    test_data_final, latitude_distance_to_latitude, longitude_distance_to_longitude
+)
 
 # Convert the longitude and latitude in the three test data set to local x and y in meters
 # using the following tables
