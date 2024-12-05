@@ -1,7 +1,8 @@
 # Auto-Driving-Path-Following-and-Speed-Control
 
 ### Authors
-- Keeby-Astro
+- Keeby-Astro (Keeby)
+- fantasybarry (Lin Tan) 
 
 ## Project Overview
 
