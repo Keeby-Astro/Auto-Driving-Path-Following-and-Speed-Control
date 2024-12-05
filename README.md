@@ -107,6 +107,8 @@ pip install numpy matplotlib pandas scipy numba
 
 This project provides a comprehensive simulation of autonomous vehicle path tracking and speed control using Python. By integrating advanced control algorithms and data filtering techniques, it achieves a realistic and robust performance suitable for educational and research purposes.
 
+There are future adjustments to be made, such as converting the Stanley Controller to a much more robust MPC algorithm, especially for scenerios involving other vehicles. This code is currently being tested on a real autonomous 2014 Nissan Leaf with considerable testing, tuning, and adjustments being made. 
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for more details.
