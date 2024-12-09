@@ -91,17 +91,17 @@ pip install numpy matplotlib pandas scipy numba
 ### Output Visualization
 - **Path Tracking Animation:** Displays the GPS path with start and end markers, and the vehicle's trajectory as it follows the path.
 
-![Car_Data/Simulation - Lloyd Noble.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Simulation%20-%20Lloyd%20Noble.gif)
+![Car_Data/Simulation - Lloyd Noble.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Simulation/Simulation%20-%20Lloyd%20Noble.gif)
 
-![Car_Data/Simulation - Reaves Park.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Simulation%20-%20Reaves%20Park.gif)
+![Car_Data/Simulation - Reaves Park.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Simulation/Simulation%20-%20Reaves%20Park.gif)
 
 - **Lloyd Noble Plots:**
 
-![Results - Lloyd Noble.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Results%20-%20Lloyd%20Noble.png)
+![Results - Lloyd Noble.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Results/Results%20-%20Lloyd%20Noble.png)
 
 - **Reaves Park Plots:**
 
-![Results - Reaves Park.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Results%20-%20Reaves%20Park.png)
+![Results - Reaves Park.png](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Results/Results%20-%20Reaves%20Park.png)
 
 ## Conclusion
 
