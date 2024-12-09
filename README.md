@@ -50,7 +50,7 @@ The project relies on GPS data contained in the file `Loyd_nobel_nav_rosbag2_202
 ### 2. Extended Kalman Filter (EKF)
 The Extended Kalman Filter smooths GPS data by predicting and correcting the vehicle's position through the uses of a state transition model and observation model, reducing noise and enhancing path accuracy.
 
-![EKF Animation.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Car_Data/Animation%20-%20GPS%20Extended%20Kalman%20Filter.gif)
+![EKF Animation.gif](https://github.com/Keeby-Astro/Auto-Driving-Path-Following-and-Speed-Control/blob/main/Path%20Planning%20and%20Filtering/Animation%20-%20GPS%20Extended%20Kalman%20Filter.gif)
 
 ### 3. GPS to Local X-Y Conversion
 To facilitate path tracking, GPS coordinates are converted to local X-Y coordinates using interpolation functions based on latitude and longitude conversion tables.
