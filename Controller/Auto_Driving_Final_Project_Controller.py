@@ -4,7 +4,7 @@
 '''
 --Problem Statement:
 Design a vehicle speed control and path following control to track the GPS path below
-(Target speed is 5 [mph]; Original data is attached).
+(Target speed is 10 [mph]; Original data is attached).
 Develop the controls in simulation using Python for verification purposes.
 
 --Original Data is attached:
