@@ -1,5 +1,5 @@
 # Auto Driving GPS Data Plot
-# Names: Caden Matthews, Jacob Ferrell, James Ouellette, Lin Tan, and David Yun
+# Names: Caden Matthews and Lin Tan
 
 '''
 -- Purpose:
