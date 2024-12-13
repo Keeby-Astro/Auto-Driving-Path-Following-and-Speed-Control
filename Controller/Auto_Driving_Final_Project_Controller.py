@@ -1,5 +1,5 @@
 # Auto Driving Final Project
-# Names: Caden Matthews, Jacob Ferrell, James Ouellette, Lin Tan, and David Yun
+# Names: Caden Matthews and Lin Tan
 
 '''
 --Problem Statement:
