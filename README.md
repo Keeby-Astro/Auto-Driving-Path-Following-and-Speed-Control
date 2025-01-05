@@ -118,4 +118,4 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for more 
 ### **Acknowledgments**
 Special thanks to:
 - Python developers and the open-source community.
-- Dr. Bin Xu, University of Oklahoma professor for Dynamics/Control: Auto Driving
+- Dr. Bin Xu, University of Oklahoma professor for Dynamics/Control Auto Driving
