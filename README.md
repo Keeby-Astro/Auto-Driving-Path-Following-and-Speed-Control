@@ -112,3 +112,10 @@ There are future adjustments to be made, such as converting the Stanley Controll
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for more details.
+
+---
+
+### **Acknowledgments**
+Special thanks to:
+- Python developers and the open-source community.
+- Dr. Bin Xu, University of Oklahoma professor for Dynamics/Control: Auto Driving
